@@ -4,18 +4,11 @@
 #..........................................
 #..........................................
 # Packages ####
-library("data.table")
-library("maptools")
-library("raster")
-library("rgdal")
-library("dismo")
-library("alphahull")
-library("rgeos")
-library("sf")
-library("here")
-library(geodata)
-library(dplyr)
 
+suppressMessages(if(!require(pacman)){install.packages("pacman");library(pacman)}else{library(pacman)})
+pacman::p_load(data.table, maptools,raster,rgdal, dismo, rgeos, sf, here, geodata, dplyr)
+  
+  
 
 set_here()
 
@@ -100,7 +93,6 @@ cleaning_process<-function(data, wrld){
 files = list.files(here("data"), pattern = ".csv", full.names = T)
 
 gadm <- st_read(here("data/gadm/gadm36_shp/gadm36.shp"))
-gadm <- wrld
 
 
 check <- cleaning_process(data = files[1], wrld = gadm)
