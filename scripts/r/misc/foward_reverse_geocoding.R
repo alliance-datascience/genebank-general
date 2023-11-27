@@ -104,10 +104,10 @@ GADM_extraction <- function(df = NULL,
   
   res <- terra::relate(cog_coord, shp, relation = "intersects", pairs = TRUE, na.rm = F)
   stopifnot("error in terra::relate" = ncol(res)==2)
-  dat$shp_id <- res[,2]
+  df$shp_id <- res[,2]
   rm(res)
   names(shp) <- paste0("GADM_", names(shp))
-  to_ret <- merge(dat, shp, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
+  to_ret <- merge(df, shp, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
   
   if(any(is.na(to_ret$shp_id))){
     warning("coordinates out of shapefile were found")
@@ -240,7 +240,7 @@ GADM_quality_score <- function(GADM_df = NULL){
   
   cols_to_check <- c("std_NAME_1", "std_NAME_2", "std_NAME_3", "std_NAME_4", "std_collsite" )
   stopifnot("Required cols not present in data"= all(cols_to_check %in% names(GADM_df)))
-  
+  admon_level <- max(as.numeric(stringr::str_extract(cols_to_check, pattern = "[0-9]{1}")), na.rm = T)
   matchs <- lapply(1:admon_level, function(lvl){
     ps <- suppressWarnings(stringr::str_detect(GADM_df$std_collsite, GADM_df[, paste0("std_NAME_", lvl)]))
     ps <- ifelse(is.na(ps), FALSE, ps)
@@ -256,14 +256,30 @@ GADM_quality_score <- function(GADM_df = NULL){
     to_ret <- ifelse(nchar(to_ret) ==0, NA, to_ret)
   })
   
-  GADM_df$GADM_quality_score_v2 <- apply(matchs, 1, function(vec){
+  GADM_df$GADM_max_admonlv <- rowSums(GADM_df[, grepl("GADM_NAME_[1-4]", names(GADM_df))] != "")
+  
+  GADM_df$GADM_admonlv_score <- apply(matchs, 1, function(vec){
     to_ret <- paste0(na.omit(vec), collapse =",")
     to_ret <- ifelse(nchar(to_ret) ==0, NA, to_ret)
     to_ret <- as.numeric(unlist(stringr::str_extract_all(to_ret, "[0-9]{1}" )))
     to_ret <- sum(to_ret, na.rm = T)
     return(to_ret)
   })
-
+  
+ 
+  GADM_df$GADM_max_admonlv_score <- sapply(GADM_df$GADM_max_admonlv, function(i){
+    if(!any(is.na(i))){
+      to_ret <- sum(seq(1:i))
+    }else{
+      to_ret <- NA
+    }
+    return(to_ret)
+  })
+  
+    
+  
+  GADM_df$GADM_quality_score_v2 <- GADM_df$GADM_admonlv_score/GADM_df$GADM_max_admonlv_score
+  
  return(GADM_df)
   
 }
@@ -281,7 +297,7 @@ shp_wrld <- terra::vect("C:/Users/acmendez/Downloads/gadm_410.gpkg")
 
 output_df <- GADM_extraction(df = output_df,
                                shp_dir = NULL,#"//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others",
-                               shp = shp_rld)
+                               shp = shp_wrld)
 
 output_df$std_collsite <- string_std(output_df$COLLSITE)
 
@@ -291,14 +307,17 @@ output_df <- GADM_quality_score(GADM_df = output_df)
 ### Propuesta 1 de categorias de calidad ######
 ##############################################
 
-output_df$GDAM_score_cats <- case_when(
-  output_df$GADM_quality_score_v2 <= 2 ~ "Low",
-  output_df$GADM_quality_score_v2 > 2 & output_df$GADM_quality_score_v2 <= 5 ~ "Moderate",
-  output_df$GADM_quality_score_v2 > 5 & output_df$GADM_quality_score_v2 <= 7 ~ "Moderate-High",
-  output_df$GADM_quality_score_v2 > 7 ~ "High" 
+output_df$GADM_score_cats <- case_when(
+  output_df$GADM_quality_score_v2 < 0.333 ~ "Low",
+  output_df$GADM_quality_score_v2 >= 0.333 & output_df$GADM_quality_score_v2 < 0.6 ~ "Moderate",
+  #output_df$GADM_quality_score_v2 > 0.5 & output_df$GADM_quality_score_v2 <= 0.8 ~ "Moderate-High",
+  output_df$GADM_quality_score_v2 >= 0.6 ~ "High" 
 )
-  
-output_df[output_df$GADM_quality_score_v2 > 5, grepl("std_|quality|ORIGCTY|cats", names(output_df)) ] %>%  
+
+#vroom::vroom_write(output_df, "C:/Users/acmendez/Downloads/gensys_CIAT.csv")
+#output_df <- vroom::vroom("C:/Users/acmendez/Downloads/gensys_CIAT.csv")
+
+output_df[output_df$GADM_quality_score_v2 > 0.8, grepl("std_|quality|ORIGCTY|cats", names(output_df)) ] %>% View
   dplyr::group_by(ORIGCTY, GDAM_score_cats) %>% 
   tally() %>% 
   arrange(desc(n)) %>% 
@@ -309,12 +328,12 @@ length(unique(output_df$ORIGCTY))
 #########################################
 #### Propuestas de gráficos ############
 #######################################
-
 #graficos pastel para GDAM_score_cats
 p1 <- output_df %>% 
-  group_by(GDAM_score_cats) %>% 
+  group_by(GADM_score_cats) %>% 
   dplyr::tally() %>%
-  rename(total= n, lab = GDAM_score_cats ) %>% 
+  drop_na() %>% 
+  dplyr::rename(total= n, lab = GADM_score_cats ) %>% 
   dplyr::mutate(lab = factor(lab, levels = c("High", "Moderate-High", "Moderate", "Low")),
                 Freq = total/sum(total)*100,
                 ypos = cumsum(Freq)- 0.5*(Freq) ,
@@ -330,23 +349,60 @@ p1 <- output_df %>%
 x11();p1
 
 
-
 # paises mas importantes 
 output_df %>%  
   dplyr::filter(ORIGCTY %in% c("PER", "COL", "BRA", "MEX", "VEN", "ECU")) %>%
-  dplyr::mutate(GDAM_score_cats = factor(GDAM_score_cats, levels = c("High", "Moderate-High", "Moderate", "Low"))) %>% 
-  dplyr::group_by(ORIGCTY, GDAM_score_cats) %>% 
+  dplyr::mutate(GADM_score_cats = factor(GADM_score_cats, levels = c("High", "Moderate-High", "Moderate", "Low"))) %>% 
+  dplyr::group_by(ORIGCTY, GADM_score_cats) %>% 
   dplyr::tally() %>% 
+  tidyr::drop_na() %>% 
   mutate(freq = n / sum(n),
          freq = round(freq,4)*100) %>% 
   dplyr::ungroup() %>% 
   mutate(label_ypos= cumsum(freq/100) - 0.5*freq/100) %>% 
-  ggplot(aes(x = ORIGCTY, y = freq, fill = GDAM_score_cats))+
+  ggplot(aes(x = ORIGCTY, y = freq, fill = GADM_score_cats))+
   geom_bar(stat = "identity")+
   labs(fill = "Quality")
   #geom_text(aes( label=freq), vjust=-1, color="white", size=3.5)
   
-  View
+
+require(leaflet)
+require(htmltools)
+c_shp <- geodata::gadm("COL", level = 1, path = tempfile())
+to_plot <- output_df %>% 
+  #dplyr::filter(ORIGCTY == "COL") %>% 
+  dplyr::distinct(DECLATITUDE, DECLONGITUDE, .keep_all = T) %>% 
+  dplyr::mutate(col = case_when(
+    GADM_score_cats == "High" ~ "#68da3e",
+    GADM_score_cats == "Moderate" ~ "#ff9800",
+    GADM_score_cats == "Low" ~ "#f50400"
+  ),
+  label = paste0("Quality: ", GADM_score_cats, 
+                 "<br> admon level:", GADM_quality_score_v1,
+                 "<br> Collsite: ", std_collsite,
+                 "<br> NAME_1:", gsub("\\\\b", "",std_NAME_1),
+                 "<br> NAME_2:", gsub("\\\\b", "",std_NAME_2),
+                 "<br> NAME_3:", gsub("\\\\b", "",std_NAME_3),
+                 "<br> NAME_4:", gsub("\\\\b", "",std_NAME_4),
+                 "<br> coordinate:", DECLATITUDE, "; ", DECLONGITUDE),
+  label = purrr::map(label, HTML))
+  
+leaflet() %>% 
+  addTiles() %>% 
+  # addPolygons(data = c_shp,
+  #             weight = 1,
+  #             fill = F) %>% 
+  addCircleMarkers(
+                   lng = to_plot$DECLONGITUDE,
+                   lat = to_plot$DECLATITUDE,
+                   radius = 4,
+                   weight = 1,
+                   fillColor = to_plot$col,
+                   label = to_plot$label,
+                   stroke = F,
+                   fillOpacity = 1
+                   )
+
 
 ###############################
 ### ISO conversion table #####
