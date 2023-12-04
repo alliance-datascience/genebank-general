@@ -153,46 +153,10 @@ cleaning_process<-function(data, wrld){
   ######################
   
   
-  p_no_sea <- points[no_sea,]
+  e <- elevation_global(0.5, "tmp/")
+  x <-raster::extract( e, COMPLETE_data_no_sea[, c('Longitude', 'Latitude')])
   
-  COMPLETE_data_no_sea$elev_suggested <- lapply(1:nrow(COMPLETE_data_no_sea), function(i){
-    
-    cat(i, "\n")
-    
-    
-    print(COMPLETE_data_no_sea$suggested_country[i])
-    
-    
-    if(!is.na(COMPLETE_data$suggested_country[i])){
-      
-      if(COMPLETE_data$suggested_country[i] != "XKO" ){
-        
-        l <- terra::extract( geodata::elevation_30s(country = COMPLETE_data$suggested_country[i], path = './tmpr'), p_no_sea[i,] )
-        
-      }else{
-        
-        
-        l <-data.frame(ID = NA,XKO_elv_msk = NA)
-      }
-      
-      
-    }else{
-      
-      l <-data.frame(ID = NA,elv_msk = NA)
-      
-    }
-    
-    #pares de coordenadas cuántos tienen sitios de colecta diftes
-    #mismo accesion ID con difte año de recibido está bien
-    
-    
-    
-    return(l[,2])
-    
-    
-    
-    
-  })
+  COMPLETE_data_no_sea$elev_suggested <- x[,2]
   
   COMPLETE_data_sea$elev_suggested <-NA
   
