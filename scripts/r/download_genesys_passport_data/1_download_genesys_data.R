@@ -36,6 +36,8 @@ extract_inst <- function(inst){
   
   data <- read_excel(passport, sheet = 1)
   
+  data <- data[which(data$SAMPSTAT %in% c(100,110, 120, 130, 200, 300, 999)), ]
+  
   
   if(nrow(data)>0){
     
