@@ -103,13 +103,15 @@ GADM_extraction <- function(df = NULL,
   #plot(shp);points(cog_coord, col = "red")
   
   res <- terra::relate(cog_coord, shp, relation = "intersects", pairs = TRUE, na.rm = F)
+  shp <- terra::as.data.frame(shp)
+  gc()
   stopifnot("error in terra::relate" = ncol(res)==2)
-  df$shp_id <- res[,2]
-  rm(res)
+  #df$shp_id <- shp$UID[res[,2]]
   names(shp) <- paste0("GADM_", names(shp))
-  to_ret <- merge(df, shp, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
-  
-  if(any(is.na(to_ret$shp_id))){
+  #to_ret <- base::merge(df, aa, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
+  to_ret<- data.frame(df, shp[res[,2], ])
+ 
+  if(any(is.nan(res[,2]))){
     warning("coordinates out of shapefile were found")
   }
   ##############################
@@ -134,7 +136,7 @@ GADM_extraction <- function(df = NULL,
         vec <- paste0("\\b", vec, "\\b")
         vec <- paste0(vec, collapse = "|")
       }else if(!all(nchar(cond) == 0) ){
-        vec <- vec[nchar(vec) != 0]
+        vec <- vec[nchar(cond) != 0]
         vec <- paste0("\\b", vec, "\\b")
       }else{
         vec <- ""
@@ -307,7 +309,7 @@ output_df <- GADM_quality_score(GADM_df = output_df)
 ### Propuesta 1 de categorias de calidad ######
 ##############################################
 
-output_df$GADM_score_cats <- case_when(
+output_df$GADM_score_cats <- dplyr::case_when(
   output_df$GADM_quality_score_v2 < 0.333 ~ "Low",
   output_df$GADM_quality_score_v2 >= 0.333 & output_df$GADM_quality_score_v2 < 0.6 ~ "Moderate",
   #output_df$GADM_quality_score_v2 > 0.5 & output_df$GADM_quality_score_v2 <= 0.8 ~ "Moderate-High",
@@ -329,12 +331,14 @@ length(unique(output_df$ORIGCTY))
 #### Propuestas de gráficos ############
 #######################################
 #graficos pastel para GDAM_score_cats
+
+#colores rojo el low
 p1 <- output_df %>% 
   group_by(GADM_score_cats) %>% 
   dplyr::tally() %>%
   drop_na() %>% 
   dplyr::rename(total= n, lab = GADM_score_cats ) %>% 
-  dplyr::mutate(lab = factor(lab, levels = c("High", "Moderate-High", "Moderate", "Low")),
+  dplyr::mutate(lab = factor(lab, levels = c("High", "Moderate", "Low")),
                 Freq = total/sum(total)*100,
                 ypos = cumsum(Freq)- 0.5*(Freq) ,
                 txt  = paste0(round(Freq, 0), "%")) %>% 
@@ -344,15 +348,21 @@ p1 <- output_df %>%
   coord_polar(theta = "y")+
   theme_void()+
   labs(fill = "Quality")+
-  scale_fill_brewer(palette="Set1")
+  scale_fill_manual(values = c("Low" = "#ff0000", "Moderate" = "#f6a700", "High" = "#009929"))
 
 x11();p1
 
+ggsave(plot = p1, 
+       filename = "C:/Users/acmendez/Downloads/pieplot1.png", 
+       dpi = 300, 
+       width = 6, 
+       height = 6, 
+       units = "in")
 
 # paises mas importantes 
-output_df %>%  
+p2 <- output_df %>%  
   dplyr::filter(ORIGCTY %in% c("PER", "COL", "BRA", "MEX", "VEN", "ECU")) %>%
-  dplyr::mutate(GADM_score_cats = factor(GADM_score_cats, levels = c("High", "Moderate-High", "Moderate", "Low"))) %>% 
+  dplyr::mutate(GADM_score_cats = factor(GADM_score_cats, levels = c("High", "Moderate", "Low"))) %>% 
   dplyr::group_by(ORIGCTY, GADM_score_cats) %>% 
   dplyr::tally() %>% 
   tidyr::drop_na() %>% 
@@ -362,7 +372,18 @@ output_df %>%
   mutate(label_ypos= cumsum(freq/100) - 0.5*freq/100) %>% 
   ggplot(aes(x = ORIGCTY, y = freq, fill = GADM_score_cats))+
   geom_bar(stat = "identity")+
-  labs(fill = "Quality")
+  labs(fill = "Quality")+
+  scale_fill_manual(values = c("Low" = "#ff0000", "Moderate" = "#f6a700", "High" = "#009929"))+
+  geom_text(aes(label = freq), size = 3, hjust = 0.5, vjust = 3, position = "stack")+
+  theme_bw()
+
+ggsave(plot = p2, 
+       filename = "C:/Users/acmendez/Downloads/pieplot2.png", 
+       dpi = 300, 
+       width = 6, 
+       height = 6, 
+       units = "in")
+
   #geom_text(aes( label=freq), vjust=-1, color="white", size=3.5)
   
 
@@ -442,4 +463,23 @@ res_reverse <- geocode(address_text = NULL,
 # std_ standardized text
 
 
+#single_w <- stringr::str_replace_all(GADM_df[, paste0("std_NAME_", lvl)], "\\\\b", "")
 
+aa <- Map(function(x,y){
+  
+  to_compare <- unlist(stringr::str_split(y, "\\|"))
+  x_split   <- unlist(str_split(x, " "))
+  st_dist <- as.vector(sapply(x_split, stringdist::stringdist, b  = to_compare, method = "lv") )
+  
+  
+  if( all(is.na(st_dist)) ){
+    to_ret <- NA
+  }else if(all(st_dist > 1)){
+    to_ret <- FALSE
+  }else{
+    to_ret <- TRUE
+  }
+  
+  return(to_ret)
+  
+}, GADM_df$std_collsite[sq], single_w[sq]) %>% unlist
