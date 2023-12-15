@@ -452,6 +452,8 @@ checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
   
   COMPLETE_data <- data[which(data$check_location_available == TRUE),]
   
+  rm(data)
+  
   COMPLETE_data <- GADM_extraction(df = COMPLETE_data,
                                    shp_dir = NULL,#"//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others",
                                    shp = shp_wrld)
@@ -579,6 +581,30 @@ checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
     COMPLETE_data$GADM_quality_score >= 0.6 ~ "High" 
   )
   
+  ###########################
+  ### Final score ##########
+  #########################
+  
+  
+  #check_collsite = FALSE -> 0 , TRUE -> 1
+  #check_zero_coords = TRUE -> 0, FALSE -> 1
+  #check_decimals_lon >= 2 -> 1, check_decimals_lon == 0 -> 0
+  #check_decimals_lat >= 2 -> 1, check_decimals_lat == 0 -> 0
+  #check_country_match == OK -> 1, check_country_match == NO_MATCH -> 0, check_country_match == SEA -> 0
+  #check_lon_pattern == TRUE -> 0, check_lon_pattern == FALSE -> 1
+  #check_lat_pattern == TRUE -> 0, check_lat_pattern == FALSE -> 1
+  #check_elev_cat == TRUE -> 0, check_elev_cat == NA -> 0, check_elev_cat == FALSE -> 1
+  #GADM_score_cats == Low -> 0, GADM_score_cats == Moderate -> 0, GADM_score_cats == High -> 1
+  # total de nueve variables, si a cada una se le asigna un valor de 1 entonces el score maximo sumaria 9
+  #el minimo seria 0
+  
+  
+  var_to_use <- c("check_collsite", "check_zero_coords", "check_decimals_lon", 
+                  "check_decimals_lat", "check_country_match", "check_lon_pattern", "check_lat_pattern",
+                  "check_elev_cat", "GADM_score_cats")
+  
+  
+  
   
   COMPLETE_data$final_score_raw <- (
     as.numeric(COMPLETE_data$check_collsite) +
@@ -613,51 +639,40 @@ checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
   
   COMPLETE_data$issue_txt_desc <- get_text_desc(var_df, text_description)
   
+  
+  nms_orig <- setdiff(names(COMPLETE_data), names(NAS_data))
+  tmp_mtx <- matrix(NA, nrow = nrow(NAS_data), ncol = length(nms_orig))
+  tmp_mtx <- as.data.frame(tmp_mtx)
+  names(tmp_mtx) <- nms_orig
+  
+  tmp_mtx$issue_txt_desc <- "Issues found: Missing DECLATITUDE or DECLONGITUDE"
+  tmp_mtx$final_score_raw <- 0
+  tmp_mtx$final_score_cats <- "Low"
+  
+  NAS_data <- cbind(NAS_data, tmp_mtx)
+  
+  COMPLETE_data <- rbind(COMPLETE_data, NAS_data)
+  
+  COMPLETE_data <- COMPLETE_data[order(COMPLETE_data$id),]
+  
   cat("Returning data", "\n")
   
   #COMPLETE_data <- dplyr::bind_rows(COMPLETE_data, NAS_data)
   #COMPLETE_data <- COMPLETE_data[order(COMPLETE_data$id), ]
-  
-  return(list(location_available = COMPLETE_data, missing_coords = NAS_data ))
+  #list(location_available = COMPLETE_data, missing_coords = NAS_data )
+  return(COMPLETE_data)
   
   
 }
 
 
-out_checks <- checking_process(data_pth = "C:/Users/acmendez/Downloads/genesys_downloaded_institutions_data (1).csv", 
+final_df <- checking_process(data_pth = "C:/Users/acmendez/Downloads/genesys_downloaded_institutions_data (1).csv", 
                              shp_pth = "C:/Users/acmendez/Downloads/gadm36.gpkg", 
                              elev_pth  = "C:/Users/acmendez/Downloads/elevation_30s.tif",
                              data_dic_pth = "D:/OneDrive - CGIAR/Desktop/GCA_data_dictionary.xlsx")
 
-final_df = out_checks$location_available
-#check_collsite = FALSE -> 0 , TRUE -> 1
-#check_zero_coords = TRUE -> 0, FALSE -> 1
-#check_decimals_lon >= 2 -> 1, check_decimals_lon == 0 -> 0
-#check_decimals_lat >= 2 -> 1, check_decimals_lat == 0 -> 0
-#check_country_match == OK -> 1, check_country_match == NO_MATCH -> 0, check_country_match == SEA -> 0
-#check_lon_pattern == TRUE -> 0, check_lon_pattern == FALSE -> 1
-#check_lat_pattern == TRUE -> 0, check_lat_pattern == FALSE -> 1
-#check_elev_cat == TRUE -> 0, check_elev_cat == NA -> 0, check_elev_cat == FALSE -> 1
-#GADM_score_cats == Low -> 0, GADM_score_cats == Moderate -> 0, GADM_score_cats == High -> 1
-# total de nueve variables, si a cada una se le asigna un valor de 1 entonces el score maximo sumaria 9
-#el minimo seria 0
-
-
-var_to_use <- c("check_collsite", "check_zero_coords", "check_decimals_lon", 
-                "check_decimals_lat", "check_country_match", "check_lon_pattern", "check_lat_pattern",
-                "check_elev_cat", "GADM_score_cats")
-
-
-
 
 write.csv(final_df, "C:/Users/acmendez/Downloads/CIAT_checks_all.csv", row.names = F)
-
-
-#table(final_df$final_score_raw, final_df$GADM_score_cats)
-#table(final_score_cats, final_df$GADM_score_cats)
-#table(final_df$final_score_cats)
-
-final_df[final_score_raw == 5, c("id","DECLONGITUDE", "DECLATITUDE",var_to_use)] %>% View
 
 
 
