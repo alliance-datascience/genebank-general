@@ -383,18 +383,21 @@ lat_pattern_id <- function(df){
 #' @return character vector of descriptive text for each accession
 get_text_desc <- function(var_df, text_description){
   
-  text_description[text_description$variable %in% names(var_df), c("variable", "descriptive_issue_text" )]
+  #text_description[text_description$variable %in% names(var_df), c("variable", "descriptive_issue_text" )]
   tmp1 <- lapply(names(var_df), function(nms){
-    vr <- var_df[, grepl(nms, names(var_df))]
+    vr <- var_df[, grepl(paste0("\\b",nms, "\\b"), names(var_df)) ]
     txt <- unlist(text_description[text_description$variable == nms , "descriptive_issue_text"])
     to_ret <- ifelse(vr != 1, txt, "")
     return(to_ret)
   })
-  
+  #140264  
   tmp1 <- do.call(cbind, tmp1)
   
   to_ret <- apply(tmp1, 1, function(vec){
     vec <- vec[nchar(vec) > 0 ]
+    if(any(grepl("Geographical Coordinate in SEA", vec))){
+      vec <- "Geographical Coordinate in SEA" 
+    }
     paste("Issues found: ", paste0(vec, collapse = ", "))
   })
   
@@ -676,3 +679,29 @@ write.csv(final_df, "C:/Users/acmendez/Downloads/CIAT_checks_all.csv", row.names
 
 
 
+
+# 
+# tmp_df <-final_df %>% 
+#   dplyr::select(id,INSTCODE, final_score_cats, issue_txt_desc) 
+# 
+# aa =tmp_df %>% 
+#   as_tibble() %>% 
+#   dplyr::mutate(issues = stringr::str_replace(issue_txt_desc, "Issues found: ", "") %>% 
+#                   stringr::str_replace_all(., ", or both,", "") %>% 
+#       stringr::str_split(., ","))
+# 
+#  
+# lapply(c("Low", "Moderate", "High"), function(vr){
+#   to_ret <- aa %>% 
+#     dplyr::filter(final_score_cats == vr) %>% 
+#     dplyr::pull(issues) %>%
+#     unlist %>% 
+#     table(.) %>% 
+#     prop.table() %>% 
+#     sort(., decreasing = T)
+#   
+#   to_ret[1:6]
+# })
+# 
+# 
+# 
