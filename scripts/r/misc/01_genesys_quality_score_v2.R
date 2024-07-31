@@ -7,8 +7,8 @@ suppressMessages(if(!require(pacman)){install.packages("pacman");library(pacman)
 pacman::p_load(data.table, sf, here, geodata, dplyr, stringr, stringi,writexl, arrow, readr,
                terra, vroom, httr, jsonlite, stringr, cld3, geosphere, readxl, paws, paws.storage, here)
 
-##CHECCCCKK ACCESION ACCNUMB 135
-  
+##CHECCCCKK ACCESION ACCNUMB 135 - 
+     
 here::here()
 
 ##########################
