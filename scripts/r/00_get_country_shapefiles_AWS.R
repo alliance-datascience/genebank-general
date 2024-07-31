@@ -9,8 +9,8 @@ pacman::p_load(Rarr,paws,paws.storage,terra, geodata, rvest)
 s3_clt <- paws.storage::s3(
   config = list(
     credentials = list(
-      creds = list(access_key_id     = 'AKIATHPVGK3ZVLVSHEEF',
-                   secret_access_key = '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')
+      creds = list(access_key_id     = '',
+                   secret_access_key = '')
     ),
     region = 'us-east-2'
   )

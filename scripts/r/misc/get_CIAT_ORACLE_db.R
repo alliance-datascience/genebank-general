@@ -35,9 +35,9 @@ get_db <- function(
 
 
 db <- get_db(classPath    = "D:/OneDrive - CGIAR/Documents/ojdbc11.jar",
-             dsn_url      = "jdbc:oracle:thin:@kappa.ciat.cgiarad.org:1521/ciat",
-             dsn_uid      = "URGANALISTA" ,
-             dsn_pwd      = "All$URG#24*",  
+             dsn_url      = "",
+             dsn_uid      = "" ,
+             dsn_pwd      = "",  
              consulta     = "SELECT * FROM BPRE_PASAPORTES")
 
 db %>% 

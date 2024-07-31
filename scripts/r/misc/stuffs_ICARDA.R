@@ -1,16 +1,6 @@
 require(pacman)
 pacman::p_load(Rarr,paws,paws.storage,terra, godata)
 
-s3_clt <- paws.storage::s3(
-  config = list(
-    credentials = list(
-      creds = list(access_key_id     = 'AKIATHPVGK3ZVLVSHEEF',
-                   secret_access_key = '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')
-    ),
-    region = 'us-east-2'
-  )
-)
-
 
 s3_clt$download_file(
   Bucket = "genebanks",
