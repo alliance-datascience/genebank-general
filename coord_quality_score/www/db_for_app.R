@@ -3,7 +3,7 @@ pacman::p_load(readxl, writexl, tidyverse, vroom)
 
 
  
-db <- vroom::vroom("C:/Users/acmendez/Downloads/genesys_quality_score_updatedData.csv")
+db <- vroom::vroom("C:/Users/acmendez/Downloads/genesys_quality_score_31-Jul-2024.csv")
 
 tree <-read.csv("D:/OneDrive - CGIAR/Genebanks/data/decision_tree_v1.csv") 
 
