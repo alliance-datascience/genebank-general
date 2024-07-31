@@ -7,6 +7,7 @@ suppressMessages(if(!require(pacman)){install.packages("pacman");library(pacman)
 pacman::p_load(data.table, maptools, sf, here, geodata, dplyr, stringr, stringi, sp,
                terra, vroom, httr, jsonlite, stringr, cld3, geosphere, readxl)
 
+##CHECCCCKK ACCESION ACCNUMB 135
 
 
 ##########################
@@ -82,39 +83,61 @@ string_std_GADM <- function(str){
 #' @param lng (numeric) decimal longitude
 #' @param df (data.frame) genesys data.frame
 #' @param shp (spatVect) world GADM shapefile
-#' @param shp_dir (character) path to shapefile folder
+#' @param shp_lst_pth (character) path/paths to shapefile folder
 #' @return Data.frame with GADM data extracted for coordinate and standardized columns names
-
+#shp_dir<-list.files("//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others", recursive = T, full.names = T, pattern  = ".shp$")
 GADM_extraction <- function(df = NULL, 
                             shp = NULL,
-                            shp_dir = NULL){
+                            shp_lst_pth = NULL){
   
   stopifnot("data.frame is null" = !is.null(df))
   stopifnot("Required columns names not present in data" = all(c("ORIGCTY", "DECLATITUDE", "DECLONGITUDE") %in% names(df)))
   
-  iso3 <- unique(df$ORIGCTY)
+  #iso3 <- unique(df$ORIGCTY)
   #user can load country shapefile or Wordl shapefile
-  if(is.null(shp)){
-    stopifnot('shp_dir and iso3 must be specified' = all(!is.null(shp_dir), !is.null(iso3)))
-    stopifnot("Multiple iso3 code when shp is null" = length(iso3) == 1)
-    
-    shp <- get_iso_shapefile(iso = iso3, out = shp_dir)
-  }
   
-  cog_coord <- matrix(c( df$DECLONGITUDE, df$DECLATITUDE), ncol = 2) %>% 
-    terra::vect(., type = 'points', crs = terra::crs(shp))
+  
+  cog_coord <- terra::vect( matrix(c( df$DECLONGITUDE, df$DECLATITUDE), ncol = 2),
+                            type = 'points', 
+                            crs =  terra::crs("epsg:4326"))
   
   #plot(shp);points(cog_coord, col = "red")
   
-  res <- terra::relate(cog_coord, shp, relation = "intersects", pairs = TRUE, na.rm = F)
-  shp <- terra::as.data.frame(shp)
-  gc()
-  stopifnot("error in terra::relate" = ncol(res)==2)
-  #df$shp_id <- shp$UID[res[,2]]
-  names(shp) <- paste0("GADM_", names(shp))
-  pos_shp <- grepl(pattern = 'GADM_GID_0|GADM_COUNTRY|GADM_NAME_[0-9]|GADM_VARNAME_[0-9]',names(shp))
-  #to_ret <- base::merge(df, aa, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
-  to_ret<- data.frame(df, shp[res[,2], pos_shp])
+  if(!is.null(shp_lst_pth)){
+    
+    res <- lapply(shp_lst_pth, function(pth){
+      cat("Getting data from: ", basename(pth), "\n")
+      shp <- terra::vect(pth)
+      res <- terra::relate(cog_coord, shp, relation = "intersects", pairs = TRUE, na.rm = F)
+      shp <- terra::as.data.frame(shp)
+      names(shp) <- paste0("GADM_", names(shp))
+      pos_shp <- grepl(pattern = 'GADM_GID_0|GADM_COUNTRY|GADM_NAME_[0-9]|GADM_VARNAME_[0-9]',names(shp))
+      #to_ret <- base::merge(df, aa, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
+      to_ret<- data.frame(id = df$id, shp[res[,2], pos_shp])
+      to_ret <- to_ret[complete.cases(to_ret$GADM_GID_0), ]
+      return(to_ret)
+    })
+    
+    res <- res[sapply(res, nrow)>0]
+    res <- dplyr::bind_rows(res)
+    row.names(res) <- NULL
+    
+    to_ret <- base::merge(df, res, by = "id", all.x = T, all.y = F)
+    
+    
+  }else{
+    res <- terra::relate(cog_coord, shp, relation = "intersects", pairs = TRUE, na.rm = F)
+    shp <- terra::as.data.frame(shp)
+    gc()
+    stopifnot("error in terra::relate" = ncol(res)==2)
+    #df$shp_id <- shp$UID[res[,2]]
+    names(shp) <- paste0("GADM_", names(shp))
+    pos_shp <- grepl(pattern = 'GADM_GID_0|GADM_COUNTRY|GADM_NAME_[0-9]|GADM_VARNAME_[0-9]',names(shp))
+    #to_ret <- base::merge(df, aa, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
+    to_ret<- data.frame(df, shp[res[,2], pos_shp])
+  }
+  
+  
   
   if(any(is.nan(res[,2]))){
     warning("coordinates out of shapefile were found")
@@ -249,16 +272,26 @@ GADM_quality_score <- function(GADM_df = NULL){
   stopifnot("Required cols not present in data"= all(cols_to_check %in% names(GADM_df)))
   admon_level <- max(as.numeric(stringr::str_extract(cols_to_check, pattern = "[0-9]{1}")), na.rm = T)
   matchs <- lapply(1:admon_level, function(lvl){
+    
     ps <- suppressWarnings(stringr::str_detect(GADM_df$std_collsite, GADM_df[, paste0("std_NAME_", lvl)]))
     
     
     ps <- ifelse(is.na(ps), FALSE, ps)
     
-    to_ret <- ifelse(ps, paste0("Admin_level_", lvl), NA)
+    aa <- ifelse(ps, paste0("Admin_level_", lvl), NA)
+    
+    bb <-  GADM_df[ifelse(ps, ps, NA), paste0("std_NAME_", lvl)]
+    bb <- gsub("\\\\b", "",bb)
+    
+    to_ret <- list(logical = aa, matched_names = bb)
     
   })
-  names(matchs) <- paste0("lvl_", 1:admon_level)
-  matchs <- do.call(data.frame, matchs)
+  names(matchs)  <- paste0("lvl_", 1:admon_level)
+  adm_lvl_matchs <- do.call(data.frame, lapply(matchs, function(lst)lst$matched_names) ) 
+  names(adm_lvl_matchs) <- paste0("admon_lvl_", 1:ncol(adm_lvl_matchs), "_matched")
+  matchs         <- do.call(data.frame, lapply(matchs, function(lst)lst$logical) )
+  
+  GADM_df <- data.frame(GADM_df, adm_lvl_matchs)
   
   GADM_df$GADM_adomlv_match <- apply(matchs, 1, function(vec){
     to_ret <- paste0(na.omit(vec), collapse =",")
@@ -284,8 +317,6 @@ GADM_quality_score <- function(GADM_df = NULL){
     }
     return(to_ret)
   })
-  
-  
   
   GADM_df$GADM_quality_score <- GADM_df$GADM_admonlv_score/GADM_df$GADM_max_admonlv_score
   
@@ -387,7 +418,7 @@ get_text_desc <- function(var_df, text_description){
   tmp1 <- lapply(names(var_df), function(nms){
     vr <- var_df[, grepl(paste0("\\b",nms, "\\b"), names(var_df)) ]
     txt <- unlist(text_description[text_description$variable == nms , "descriptive_issue_text"])
-    to_ret <- ifelse(vr != 1, txt, "")
+    to_ret <- ifelse(vr != 1, txt , "")
     return(to_ret)
   })
   #140264  
@@ -406,20 +437,78 @@ get_text_desc <- function(var_df, text_description){
 }
 
 
+#' Function to compute geodesic distance from poits to roads
+#' @param df (data.frame) Lon, Lat data.frame
+#' @param roads_cnt_desc (data.frame) world roads shapefiles data dictionary
+#' @param roads_root_pth (character) path to roads root dir
+#' @return Numeric vector of distances to the nearest road
+dist_to_roads <- function(df, roads_cnt_desc, roads_root_pth){
+  
+  av_countries <- "COL"#unique(df$GADM_GID_0)
+  df$id_lonlat <- paste0(df$DECLONGITUDE,":",df$DECLATITUDE)
+  
+  dists_df <- lapply(av_countries, function(iso){
+    cat(">>> calculating distances to roads for: ", iso, "\n")
+    
+    coords <- base::subset(df, GADM_GID_0 == iso, select =  c("DECLONGITUDE", "DECLATITUDE", "id_lonlat")) 
+    coords <- coords[!duplicated(data.frame(coords$DECLONGITUDE, coords$DECLATITUDE)),]
+    
+    stopifnot("missng values found. " = !any(is.na(coords$DECLONGITUDE)) )
+    
+    cnt_to_process <- roads_cnt_desc[roads_cnt_desc$ISO3 %in% iso,  ]$country_names_osm #use av_countries
+    
+    stopifnot("duplicated country roads names" = !any(duplicated(cnt_to_process)))
+    all_dirs <- list.dirs(roads_root_pth, recursive = T)
+    pattern <-  paste0(paste0("\\b", cnt_to_process, "\\b"), collapse = "|")
+    
+    paths_found <- all_dirs[str_detect(basename(all_dirs), pattern = pattern)]
+   
+    roads_shp_pth <- list.files(paths_found, full.names = T, pattern = ".gpkg$")
+    
+    
+    shp <- lapply(roads_shp_pth, terra::vect)
+    shp <- terra::vect(shp)
+    
+    
+    spatial_points <- terra::vect(coords,  crs = crs(shp), geom = c("DECLONGITUDE", "DECLATITUDE") )
+    
+    dists <- terra::nearest(spatial_points, shp)
+
+    
+   coords$dist_to_roads <- round(dists$distance, 0 )
+   
+   
+
+    return(coords)
+    
+    
+  })
+  
+  
+  dists_df <- do.call(rbind, dists_df)
+  dists_df <- dists_df[, c("id_lonlat", "dist_to_roads")]
+  
+  #aa <- base::merge(df, dists_df, by = "id_lonlat", all.x = T, sort = F)
+  df <- dplyr::left_join(df, dists_df, by = "id_lonlat")
+  
+  return(df$dist_to_roads)
+}
+
+
 #' Main Function to implement coordinates checking proccess for genesys data
 #' @param data_pth (character) path to genesys institute data
-#' @param shp_pth (character) path to world shapefile
+#' @param shp_pth (character) path/paths to  shapefiles
 #' @param elev_pth (character) path to elevetion raster
 #' @return List of dataframe containnig 
 checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
   #data_pth = "C:/Users/acmendez/Downloads/genesys-accessions-COL003.csv"
-  #shp_pth = "C:/Users/acmendez/Downloads/gadm36.gpkg"
+  #shp_pth = list.files("//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others", recursive = T, full.names = T, pattern  = ".shp$")
   #elev_pth = "C:/Users/acmendez/Downloads/elevation_30s.tif"
   #data_dic_pth = "D:/OneDrive - CGIAR/Desktop/GCA_data_dictionary.xlsx"
   #e <- geodata::elevation_global(0.5, tempdir())
   #terra::writeRaster(e, "C:/Users/acmendez/Downloads/elevation_30s.tif")
   elev_rst <- terra::rast(elev_pth)
-  shp_wrld <- terra::vect(shp_pth)
+  shp_paths <- shp_pth #terra::vect(shp_pth)
   text_description <- readxl::read_excel(data_dic_pth)
   
   cat("Reading institute passport data...", "\n")
@@ -458,8 +547,8 @@ checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
   rm(data)
   
   COMPLETE_data <- GADM_extraction(df = COMPLETE_data,
-                                   shp_dir = NULL,#"//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others",
-                                   shp = shp_wrld)
+                                   shp_lst_pth = shp_paths,#"//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others",
+                                   shp = NULL)
   
   #################################
   ##### check zero coordinates ####
@@ -578,8 +667,9 @@ checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
   COMPLETE_data <- GADM_quality_score(GADM_df = COMPLETE_data)
   
   COMPLETE_data$GADM_score_cats <- dplyr::case_when(
-    COMPLETE_data$GADM_quality_score < 0.333 ~ "Low",
-    COMPLETE_data$GADM_quality_score >= 0.333 & COMPLETE_data$GADM_quality_score < 0.6 ~ "Moderate",
+    COMPLETE_data$GADM_quality_score == 0 ~ "None",
+    COMPLETE_data$GADM_quality_score > 0 & COMPLETE_data$GADM_quality_score < 0.333 ~ "Low",
+    COMPLETE_data$GADM_quality_score >= 0.333 & COMPLETE_data$GADM_quality_score < 0.6 ~ "Partial",
     #output_df$GADM_quality_score_v2 > 0.5 & output_df$GADM_quality_score_v2 <= 0.8 ~ "Moderate-High",
     COMPLETE_data$GADM_quality_score >= 0.6 ~ "High" 
   )
@@ -605,9 +695,6 @@ checking_process<-function(data_pth, shp_pth, elev_pth, data_dic_pth){
   var_to_use <- c("check_collsite", "check_zero_coords", "check_decimals_lon", 
                   "check_decimals_lat", "check_country_match", "check_lon_pattern", "check_lat_pattern",
                   "check_elev_cat", "GADM_score_cats")
-  
-  
-  
   
   COMPLETE_data$final_score_raw <- (
     as.numeric(COMPLETE_data$check_collsite) +
@@ -679,29 +766,233 @@ write.csv(final_df, "C:/Users/acmendez/Downloads/CIAT_checks_all.csv", row.names
 
 
 
+#' Main Function to implement coordinates checking proccess for genesys data V2.0, new 
+#' way of compute priority score
+#' @param data_pth (character) path to genesys institute data
+#' @param shp_pth (character) path/paths to  shapefiles
+#' @param elev_pth (character) path to elevetion raster
+#' @param roads_root_pth (character) path to available OSM roads shapefiles root dir 
+#' @param cnt_code_pth (character) path to country code roads description file
+#' @return List of dataframe containnig 
+checking_process_v2<-function(data_pth, 
+                              shp_pth, 
+                              elev_pth, 
+                              slope_pth, 
+                              roads_root_pth,
+                              cnt_code_pth,
+                              data_dic_pth){
+  #data_pth = "C:/Users/acmendez/Downloads/genesys_downloaded_institutions_data (1).csv"
+  #shp_pth = list.files("//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others", recursive = T, full.names = T, pattern  = ".shp$")
+  #elev_pth = "C:/Users/acmendez/Downloads/elevation_30s.tif"
+  #slope_pth = "C:/Users/acmendez/Downloads/slope_col.tif"
+  #roads_root_pth = "//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/OSM_roads"
+  #cnt_code_pth = "C:/Users/acmendez/Downloads/country_roads_codes.xlsx"
+  #data_dic_pth = "D:/genebank-general/docs/GCA_data_dictionary.xlsx"
+  
+  #e <- geodata::elevation_global(0.5, tempdir())
+  #terra::writeRaster(e, "C:/Users/acmendez/Downloads/elevation_30s.tif")
+  elev_rst <- terra::rast(elev_pth)
+  slope_rst <- terra::rast(slope_pth)
+  shp_paths <- shp_pth #terra::vect(shp_pth)
+  text_description <- readxl::read_excel(data_dic_pth)
+  roads_cnt_desc <- readxl::read_excel(cnt_code_pth)
+  cat("Reading institute passport data...", "\n")
+  
+  data <- read.csv(data_pth)
+  data$id <- 1:nrow(data)
+  #names(data)[which(names(data) %in% c("DECLATITUDE", "DECLONGITUDE"))]<- c("Latitude", "Longitude")
+  
+  
+  cat("Identifying the accessions with location issues...", "\n")
+  
+  
+  #########################################
+  ##### check data without collSite #######
+  #########################################
+  
+  
+  data$check_collsite <- TRUE
+  data$check_collsite[is.na(data$COLLSITE)] <- FALSE
+  
+  
+  ##############################################
+  ##### Separate data with no coodinates #######
+  ##############################################
+  
+  data$check_location_available <- NA
+  
+  data$check_location_available[!complete.cases(data[,c("DECLATITUDE", "DECLONGITUDE")])] <- FALSE
+  
+  data$check_location_available[complete.cases(data[,c("DECLATITUDE", "DECLONGITUDE")])] <- TRUE
+  
+  NAS_data <- data[which(data$check_location_available == FALSE),]
+  
+  COMPLETE_data <- data[which(data$check_location_available == TRUE),]
+  
+  rm(data)
+  
+  COMPLETE_data <- GADM_extraction(df = COMPLETE_data,
+                                   shp_lst_pth = shp_paths,#"//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others",
+                                   shp = NULL)
+  
+ 
+  ########################
+  ##### elevation #######
+  ######################
+  
+  
+  x <- terra::extract( elev_rst, COMPLETE_data[, c('DECLONGITUDE', 'DECLATITUDE')])
+  
+  COMPLETE_data$check_elev_suggested <-NA
+  COMPLETE_data$check_elev_suggested <- x[,2]
+  
+  COMPLETE_data$check_elev_diff <- abs(COMPLETE_data$ELEVATION - COMPLETE_data$check_elev_suggested)
+  COMPLETE_data$check_elev_cat  <- NA
+  COMPLETE_data$check_elev_cat  <- ifelse(COMPLETE_data$check_elev_diff > 150, TRUE,  FALSE)
+  
+  
+  #####################
+  #### Slope #########
+  ##################
+  
+  x <- terra::extract( slope_rst, COMPLETE_data[, c('DECLONGITUDE', 'DECLATITUDE')])
+  
+  COMPLETE_data$check_slope_suggested <-NA
+  COMPLETE_data$check_slope_suggested <- x[,2]
 
-# 
-# tmp_df <-final_df %>% 
-#   dplyr::select(id,INSTCODE, final_score_cats, issue_txt_desc) 
-# 
-# aa =tmp_df %>% 
-#   as_tibble() %>% 
-#   dplyr::mutate(issues = stringr::str_replace(issue_txt_desc, "Issues found: ", "") %>% 
-#                   stringr::str_replace_all(., ", or both,", "") %>% 
-#       stringr::str_split(., ","))
-# 
-#  
-# lapply(c("Low", "Moderate", "High"), function(vr){
-#   to_ret <- aa %>% 
-#     dplyr::filter(final_score_cats == vr) %>% 
-#     dplyr::pull(issues) %>%
-#     unlist %>% 
-#     table(.) %>% 
-#     prop.table() %>% 
-#     sort(., decreasing = T)
-#   
-#   to_ret[1:6]
-# })
-# 
-# 
-# 
+  #####################
+  ## GADM scoring ####
+  ###################
+  
+  COMPLETE_data$std_collsite <- string_std(COMPLETE_data$COLLSITE)
+  
+  COMPLETE_data <- GADM_quality_score(GADM_df = COMPLETE_data)
+  
+  #elastic score (sugerencia de curador de cassava juan jose)
+  COMPLETE_data$GADM_quality_score <- dplyr::case_when(
+    COMPLETE_data$GADM_quality_score == 0 ~ 0,
+    COMPLETE_data$GADM_quality_score > 0 & COMPLETE_data$GADM_quality_score < 0.333 ~ 1,
+    COMPLETE_data$GADM_quality_score >= 0.333 & COMPLETE_data$GADM_quality_score < 0.6 ~ 2,
+    #output_df$GADM_quality_score_v2 > 0.5 & output_df$GADM_quality_score_v2 <= 0.8 ~ "Moderate-High",
+    COMPLETE_data$GADM_quality_score >= 0.6 ~ 3 
+  )
+  
+  COMPLETE_data$GADM_score_cats <- dplyr::case_when(
+    COMPLETE_data$GADM_quality_score == 0 ~ "None",
+    COMPLETE_data$GADM_quality_score == 1 ~ "Low",
+    COMPLETE_data$GADM_quality_score == 2 ~ "Partial",
+    #output_df$GADM_quality_score_v2 > 0.5 & output_df$GADM_quality_score_v2 <= 0.8 ~ "Moderate-High",
+    COMPLETE_data$GADM_quality_score == 3 ~ "High" 
+  )
+  
+  ############################
+  ### COORDS on SEA #########
+  ##########################
+  
+  COMPLETE_data$check_country_match <- ifelse(!is.na(COMPLETE_data$GADM_GID_0), 1, 0)
+  
+  ############################
+  #### DISTANCE TO ROADS ####
+  ##########################
+  
+  
+  COMPLETE_data$check_dist_to_roads <- dist_to_roads(
+    df = COMPLETE_data[, c("DECLONGITUDE", "DECLATITUDE", "GADM_GID_0")] ,
+    roads_cnt_desc = roads_cnt_desc ,
+    roads_root_pth = roads_root_pth)
+    
+  #############################
+  #### DONATED MATERIALS #####
+  ###########################
+  
+  COMPLETE_data$check_is_donated <- !is.na(COMPLETE_data$DONORNAME) | !is.na(COMPLETE_data$DONORNUMB)
+  
+  
+  ###########################
+  ##### MARKET ACCESSIONS ##
+  #########################
+  
+
+  COMPLETE_data$check_market_acc <- grepl("retail|retailer|market", COMPLETE_data$std_collsite) & 
+    !(grepl("^from .* market", COMPLETE_data$std_collsite) | 
+        grepl("[0-9]* km [a-z]{1,2} of.*market|[0-9]* km [a-z]{1,2} from.*market",  COMPLETE_data$std_collsite))
+  
+  
+  ###########################
+  ### Final score ##########
+  #########################
+  
+  
+  var_to_use <- c("check_collsite", "check_elev_cat", "check_dist_to_roads", "GADM_score_cats")
+  
+  COMPLETE_data$final_score_raw <- (
+    as.numeric(COMPLETE_data$check_collsite) +
+    as.numeric(!ifelse(is.na(COMPLETE_data$check_elev_cat), TRUE, COMPLETE_data$check_elev_cat))+
+    as.numeric(COMPLETE_data$check_dist_to_roads > 700 & !is.na(COMPLETE_data$check_dist_to_roads))+
+    COMPLETE_data$GADM_quality_score
+    #ifelse(COMPLETE_data$GADM_score_cats == "High", 3, ifelse(COMPLETE_data$GADM_score_cats == "Moderate", 2, 1))
+  ) * COMPLETE_data$check_country_match
+  
+  
+ ### solo el 325/10064 = 3.2% de las accesiones en colombia tienen DONORCODE
+ ### solo el 2006/10064 = 19% de las accesiones en colombia tienen DONORNUMB
+ ### solo el 3749/10064 = 37% de las accesiones en colombia tienen DONORNAME
+ ### solo el 4138/10064 = 41% de las accesiones en colombia tienen OTHERNUMB
+  
+  
+  COMPLETE_data$final_score_cats <- dplyr::case_when(
+    COMPLETE_data$final_score_raw <= 2 ~ "Low",
+    COMPLETE_data$final_score_raw  >= 3 & COMPLETE_data$final_score_raw <= 4 ~ "Moderate",
+    COMPLETE_data$final_score_raw >= 5 ~ "High")
+  
+  var_df = data.frame(check_collsite = as.numeric(COMPLETE_data$check_collsite) ,
+                      check_elev_cat = as.numeric(!ifelse(is.na(COMPLETE_data$check_elev_cat), TRUE, COMPLETE_data$check_elev_cat)), 
+                      check_dist_to_roads  = as.numeric(COMPLETE_data$check_dist_to_roads > 700 & !is.na(COMPLETE_data$check_dist_to_roads)),
+                      GADM_score_cats = as.numeric(COMPLETE_data$GADM_score_cats == "High"),
+                      check_country_match_sea = as.numeric(COMPLETE_data$check_country_match != "SEA")
+  )
+  var_df$GADM_score_cats = ifelse(var_df$check_collsite == 0, 1, 0 )
+  
+  COMPLETE_data$issue_txt_desc <- get_text_desc(var_df, text_description)
+  
+  
+  #COMPLETE_data$complementary_cat <-  ifelse(COMPLETE_data$check_is_donated | COMPLETE_data$check_market_acc, "Collected in market/Donated", )
+
+  nms_orig <- setdiff(names(COMPLETE_data), names(NAS_data))
+  tmp_mtx <- matrix(NA, nrow = nrow(NAS_data), ncol = length(nms_orig))
+  tmp_mtx <- as.data.frame(tmp_mtx)
+  names(tmp_mtx) <- nms_orig
+  
+  tmp_mtx$issue_txt_desc <- "Issues found: Missing DECLATITUDE or DECLONGITUDE"
+  tmp_mtx$final_score_raw <- 0
+  tmp_mtx$final_score_cats <- "Low"
+  tmp_mtx$check_country_match <- 0
+  
+  NAS_data <- cbind(NAS_data, tmp_mtx)
+  
+  COMPLETE_data <- rbind(COMPLETE_data, NAS_data)
+  
+  COMPLETE_data <- COMPLETE_data[order(COMPLETE_data$id),]
+  
+  cat("Returning data", "\n")
+  
+  #COMPLETE_data <- dplyr::bind_rows(COMPLETE_data, NAS_data)
+  #COMPLETE_data <- COMPLETE_data[order(COMPLETE_data$id), ]
+  #list(location_available = COMPLETE_data, missing_coords = NAS_data )
+  return(COMPLETE_data)
+  
+  
+}
+
+final_df <- checking_process_v2(data_pth = "C:/Users/acmendez/Downloads/genesys_downloaded_institutions_data (1).csv", 
+                             shp_pth = list.files("//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others", recursive = T, full.names = T, pattern  = ".shp$"), 
+                             elev_pth  = "C:/Users/acmendez/Downloads/elevation_30s.tif",
+                             slope_pth = "C:/Users/acmendez/Downloads/slope_30s.tif",
+                             roads_root_pth = "//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/OSM_roads",
+                             cnt_code_pth = "C:/Users/acmendez/Downloads/country_roads_codes.xlsx",
+                             data_dic_pth = "D:/genebank-general/docs/GCA_data_dictionary.xlsx")
+
+writexl::write_xlsx(final_df, "C:/Users/acmendez/Downloads/CIAT_checks_all_v2.xlsx")
+
+
+View(final_df)

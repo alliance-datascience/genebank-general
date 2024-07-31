@@ -3,167 +3,11 @@
 ## date: Sep-2023
 
 if(require(pacman)){install.packages("pacman");library(pacman)}else{library(pacman)}
-pacman::p_load(stringr, stringi, tidyverse, terra, vroom, httr, jsonlite, stringr, cld3)
+pacman::p_load(stringi, tidyverse, terra, vroom, httr, jsonlite, stringr)
 
 ##########################
 ### FUNCTIONS ###########
 ########################
-#'Function to download country sahpefile using geodata package
-#' @param iso (character) Three letter country iso code
-#' @param out (charcter) path to folder where to download country shapefile
-#' @return Country shapefile in terra::vect format
-get_iso_shapefile <- function(iso = 'KEN', out = NULL){
-
-  out_dir <-  paste0(out, "/", iso)
-  out_file <- paste0(out_dir, "/", iso,".shp")
-  
-  if(!file.exists(out_file)){
-    levels <- 5:1
-    for(i in 1:length(levels)){
-      tryCatch(expr = {
-        shp <- geodata::gadm(country = iso, level = levels[i], path = tempdir(), resolution = 1)
-        terra::writeVector(shp, out_file)
-        break
-      },
-      error = function(e){
-        cat(paste0("Getting GADM level ",levels[i]," failed... Trying a higher level\n"))
-        return("\n")
-      })
-    }
-    
-  }else{
-    shp <- terra::vect(x = out_file)
-  }
-  
-  
-  return(shp)
-}
-
-#' Function to standardize text columns
-#' @param str (character)  unstandardized string
-#' @return string without special charcters, lowercas and no accents
-string_std <- function(str){
-  #remover caracteres especiales y signos de puntuacion
-  #remover espacios multiples
-  
-  cl_site <- stringr::str_replace_all(str, "[^[:alnum:]]+", " ")  
-  cl_site <- stringr::str_replace_all(cl_site, "[[:punct:]]+", " ") 
-  cl_site <- stringr::str_squish(cl_site)
-  cl_site <- stringr::str_to_lower(cl_site)
-  cl_site <- stringi::stri_trans_general(cl_site, "Latin-ASCII") #remover acentos
-  #dividir vectores por cada espacio
-  to_ret <- cl_site#stringr::str_split(string = cl_site, pattern = "\\s")
-  
-  return((to_ret))
-}
-
-#' Function to standardize text columns from GADM data
-#' @param str (character)  unstandardized string
-#' @return string without special charcters, lowercas and no accents
-string_std_GADM <- function(str){
-  cl_site <- stringr::str_replace_all(str, "[[:punct:]]+", " ") 
-  cl_site <- stringr::str_squish(cl_site)
-  cl_site <- stringr::str_to_lower(cl_site)
-  cl_site <- stringi::stri_trans_general(cl_site, "Latin-ASCII") #remover acentos
-  #dividir vectores por cada espacio
-  to_ret <- cl_site#stringr::str_split(string = cl_site, pattern = "\\s")
-  
-  return((to_ret))
-}
-
-
-#' Function to extract information of GADM country administrative levels based on coordinate
-#' @param iso3 (character) Three letter country iso Code
-#' @param lat (numeric) decimal latitude
-#' @param lng (numeric) decimal longitude
-#' @param df (data.frame) genesys data.frame
-#' @param shp (spatVect) world GADM shapefile
-#' @param shp_dir (character) path to shapefile folder
-#' @return Data.frame with GADM data extracted for coordinate and standardized columns names
-
-GADM_extraction <- function(df = NULL, 
-                            shp = NULL,
-                            shp_dir = NULL){
-  
-  stopifnot("data.frame is null" = !is.null(df))
-  stopifnot("Required columns names not present in data" = all(c("ORIGCTY", "DECLATITUDE", "DECLONGITUDE") %in% names(df)))
-  
-  iso3 <- unique(df$ORIGCTY)
-   #user can load country shapefile or Wordl shapefile
-  if(is.null(shp)){
-    stopifnot('shp_dir and iso3 must be specified' = all(!is.null(shp_dir), !is.null(iso3)))
-    stopifnot("Multiple iso3 code when shp is null" = length(iso3) == 1)
-    
-    shp <- get_iso_shapefile(iso = iso3, out = shp_dir)
-  }
-  
-  cog_coord <- matrix(c( df$DECLONGITUDE, df$DECLATITUDE), ncol = 2) %>% 
-    terra::vect(., type = 'points', crs = terra::crs(shp))
-  
-  #plot(shp);points(cog_coord, col = "red")
-  
-  res <- terra::relate(cog_coord, shp, relation = "intersects", pairs = TRUE, na.rm = F)
-  shp <- terra::as.data.frame(shp)
-  gc()
-  stopifnot("error in terra::relate" = ncol(res)==2)
-  #df$shp_id <- shp$UID[res[,2]]
-  names(shp) <- paste0("GADM_", names(shp))
-  #to_ret <- base::merge(df, aa, by.x = "shp_id",by.y = "GADM_UID", all.x = T, all.y = F)
-  to_ret<- data.frame(df, shp[res[,2], ])
- 
-  if(any(is.nan(res[,2]))){
-    warning("coordinates out of shapefile were found")
-  }
-  ##############################
-  ## text cleaning proccess ###
-  ############################
-  
-  pos <- grepl(pattern = 'GADM_COUNTRY|GADM_NAME_[0-9]|GADM_VARNAME_[0-9]',names(to_ret))
-  to_ret[, pos] <- apply(to_ret[, pos], 2, string_std_GADM)
-  
-  #usar NAME_ y VARNAME_ para crear una unica variable para comparar
-  #\\b (boundary word) sirve para que el grepl o el str_detect busque el match exacto
-  admon_level <- 4
-  new_vars <- lapply(1:admon_level, function(i){
-    nm  <- paste0("GADM_NAME_",i)
-    vnm <- paste0("GADM_VARNAME_",i)
-    new_var <- apply(to_ret[, c(nm, vnm)], 1, function(vec){
-      cond <- ifelse(is.na(nchar(vec)), '' , vec)
-      vec <- gsub(pattern ="\\|" , replacement = "\\\\b\\|\\\\b", vec)
-      if(all(is.na(vec))){
-        vec <- ""
-      }else if(!any(nchar(cond) == 0) ){
-        vec <- paste0("\\b", vec, "\\b")
-        vec <- paste0(vec, collapse = "|")
-      }else if(!all(nchar(cond) == 0) ){
-        vec <- vec[nchar(cond) != 0]
-        vec <- paste0("\\b", vec, "\\b")
-      }else{
-        vec <- ""
-      }
-      
-      return((vec))
-    }) 
-    new_var <- unlist(new_var)
-    
-    return(new_var)
-    
-  })
-  
-  stopifnot("text length differs from each other" = all(sapply(new_vars, length) == nrow(to_ret)))
-  
-  names(new_vars) <- paste0("std_NAME_", 1:4)
-  
-  to_ret <- data.frame( to_ret, do.call(data.frame, new_vars))
-  
-  
-  to_ret$shp_id <- NULL
-  if(nrow(to_ret) == 0){
-    to_ret <- NA
-  }
-  
- return(to_ret) 
-}
 
 #' Function to call google maps geocoding api for foward and reverse geocoding
 #' @param address_text (character) address or place name to be geocoded
@@ -221,11 +65,14 @@ geocode <- function(address_text = NULL,
   }
   
   response <- httr::GET(url = request)
-  if(httr::http_status(response)$category == "Success"){
-    raw_info <- jsonlite::fromJSON(httr::content(response, "text", encoding = "UTF-8"))$results
+  json_fl <- jsonlite::fromJSON(httr::content(response, "text", encoding = "UTF-8"))
+  if(json_fl$status == "OK"){
+    raw_info <- json_fl$results
     
+  }else if(json_fl$status == "OVER_QUERY_LIMIT"){
+    raw_info <- "OVER_QUERY_LIMIT"
   }else{
-    warning(httr::http_status(response)$message)
+    warning(json_fl$status)
     raw_info <- NA
   }
   
@@ -234,57 +81,97 @@ geocode <- function(address_text = NULL,
 }
 
 
+data_pth <- "C:/Users/acmendez/Downloads/genesys_downloaded_institutions_data (1).csv"
 
-#' Function to calculate some quality scores based on GADM data
-#' @param GADM_df (data.frame) output dataframe from  GADM_extraction function
-#' @return (data.frame) with quality scores as columns 
-GADM_quality_score <- function(GADM_df = NULL){
+
+
+  data <- read.csv(data_pth)
+  data <- data[complete.cases(data$DECLATITUDE, data$DECLONGITUDE),]
+  data$id_latlng <- paste0(as.character(data$DECLATITUDE), ":",as.character(data$DECLONGITUDE))
+  data <- data[!duplicated(data$id_latlng), ]
   
-  cols_to_check <- c("std_NAME_1", "std_NAME_2", "std_NAME_3", "std_NAME_4", "std_collsite" )
-  stopifnot("Required cols not present in data"= all(cols_to_check %in% names(GADM_df)))
-  admon_level <- max(as.numeric(stringr::str_extract(cols_to_check, pattern = "[0-9]{1}")), na.rm = T)
-  matchs <- lapply(1:admon_level, function(lvl){
-    ps <- suppressWarnings(stringr::str_detect(GADM_df$std_collsite, GADM_df[, paste0("std_NAME_", lvl)]))
-    ps <- ifelse(is.na(ps), FALSE, ps)
+  #nrow(data) = 89.658 (5.00 USD per 1000 accession)  ==> total cost of 450 USD
+  
+  
+  data <- data[, c("id_latlng", "DECLATITUDE", "DECLONGITUDE")]
+  
+  geocode_info <- list()
+  
+  
+  for(i in 1:length(data$id_latlng)){
+    id = data$id_latlng[i]
+    cat("Processing id: ", id, " position: ", i, "/", length(data$id_latlng),  "\n")
     
-    to_ret <- ifelse(ps, paste0("Admin_level_", lvl), NA)
+    to_geocode <- data[data$id_latlng == id, ]
+    while(TRUE){
+      
+      if(nrow(to_geocode) == 1){
+        #API call
+        res_1 <- geocode(
+          lat = to_geocode$DECLATITUDE,
+          lng =  to_geocode$DECLONGITUDE ,
+          geocode_type = "reverse",
+          gg_key = gg_key 
+        )
+        
+        
+      }else{
+        
+        warnings("Duplicated id")
+        to_geocode <- to_geocode[1, ]
+        
+        res_1 <- geocode(
+          lat = to_geocode$DECLATITUDE,
+          lng =  to_geocode$DECLONGITUDE ,
+          geocode_type = "reverse",
+          gg_key = gg_key 
+        )
+      }
+      
+      
+      if(class(res_1) == "character"){
+        cat("OVER_QUERY_LIMIT reached \n")
+        delay <- 60+round(runif(1,10,30),0)
+        geocode_info[[i]] <- data.frame(message = "OVER_QUERY_LIMIT", id = id)
+        Sys.sleep(delay)
+        
+      }else if(class(res_1) == "logical"){
+        cat("Can't retrieve data from coordinate \n")
+        geocode_info[[i]] <- data.frame(message = "NA", id = id)
+        break
+      }else{
+        geocode_info[[i]] <- data.frame(res_1, id = id)
+        break
+      }
+    }
     
-  })
-  names(matchs) <- paste0("lvl_", 1:admon_level)
-  matchs <- do.call(data.frame, matchs)
-  
-  GADM_df$GADM_quality_score_v1 <- apply(matchs, 1, function(vec){
-    to_ret <- paste0(na.omit(vec), collapse =",")
-    to_ret <- ifelse(nchar(to_ret) ==0, NA, to_ret)
-  })
-  
-  GADM_df$GADM_max_admonlv <- rowSums(GADM_df[, grepl("GADM_NAME_[1-4]", names(GADM_df))] != "")
-  
-  GADM_df$GADM_admonlv_score <- apply(matchs, 1, function(vec){
-    to_ret <- paste0(na.omit(vec), collapse =",")
-    to_ret <- ifelse(nchar(to_ret) ==0, NA, to_ret)
-    to_ret <- as.numeric(unlist(stringr::str_extract_all(to_ret, "[0-9]{1}" )))
-    to_ret <- sum(to_ret, na.rm = T)
-    return(to_ret)
-  })
+    delay <- runif(1,0,1)
+    if(i %% 1000 == 0){
+      saveRDS(geocode_info, "/home/ruser/geocoded_data/geocode_info.rds")
+      
+    }
+   
+    Sys.sleep(delay)
+     
+  }#end for
   
  
-  GADM_df$GADM_max_admonlv_score <- sapply(GADM_df$GADM_max_admonlv, function(i){
-    if(!any(is.na(i))){
-      to_ret <- sum(seq(1:i))
-    }else{
-      to_ret <- NA
-    }
-    return(to_ret)
-  })
-  
-    
-  
-  GADM_df$GADM_quality_score_v2 <- GADM_df$GADM_admonlv_score/GADM_df$GADM_max_admonlv_score
-  
- return(GADM_df)
-  
-}
+
+##########################################
+####3 USANDO REVERSE GEOCODING  #########
+########################################
+
+
+      38.8392
+res_1 <- geocode(
+  lat = -5.34360,
+  lng =  38.8392 ,
+  geocode_type = "reverse",
+  gg_key = gg_key 
+)
+
+res_1 %>% View
+
 
 ######################################################
 ######### 1. USANDO GADM SHAPEFILE    ###############
@@ -326,6 +213,7 @@ output_df[output_df$GADM_quality_score_v2 > 0.8, grepl("std_|quality|ORIGCTY|cat
   View
 
 length(unique(output_df$ORIGCTY))
+
 
 #########################################
 #### Propuestas de gráficos ############
