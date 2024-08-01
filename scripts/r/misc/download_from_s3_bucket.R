@@ -11,8 +11,13 @@ pacman::p_load(data.table, maptools, sf, here, geodata, dplyr, stringr, stringi,
 s3_clt <- paws.storage::s3(
   config = list(
     credentials = list(
+<<<<<<< HEAD
       creds = list(access_key_id     = '',
                    secret_access_key = '')
+=======
+      creds = list(access_key_id     = 'sample',
+                   secret_access_key = 'sample')
+>>>>>>> aa6a2405701c79a02a66a6fde4cb91a0b172a68b
     ),
     region = 'us-east-2'
   )
