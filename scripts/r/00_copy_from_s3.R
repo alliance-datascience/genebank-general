@@ -370,7 +370,7 @@ copy_s3_genesys_data <- function( s3_clt, out_dir_name){
   
   nms_fls <- s3_clt$list_objects(
     Bucket  = "genebanks",
-    Prefix  = "zone=landing/source=genesys/subject=passport_data/institute=all/"
+    Prefix  = "zone=raw/source=genesys/subject=passport_data_07-2024_filtered/institute=all/"
   )
   
   nms <- sapply(nms_fls$Contents, function(lst)lst$Key)

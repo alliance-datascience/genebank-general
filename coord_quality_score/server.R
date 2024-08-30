@@ -24,6 +24,8 @@ suppressMessages(if(!require(bslib)){install.packages("bslib");library(bslib)}el
 suppressMessages(if(!require(thematic)){install.packages("thematic");library(thematic)}else{library(thematic)})
 suppressMessages(if(!require(stringi)){install.packages("stringi");library(stringi)}else{library(stringi)})
 suppressMessages(if(!require(reactable)){install.packages("reactable");library(reactable)}else{library(reactable)})
+suppressMessages(if(!require(DBI)){install.packages("DBI");library(DBI)}else{library(DBI)})
+suppressMessages(if(!require(RSQLite)){install.packages("RSQLite");library(RSQLite)}else{library(RSQLite)})
 
 
 getColor <- function(df) {
@@ -48,7 +50,7 @@ check_opt <- function(var){
   return(var)
 }
 
-do_filter <- function(db, 
+do_filter <- function(db_conn, 
                       instcode = NULL,
                       cropname = NULL,
                       origcty  = NULL,
@@ -69,21 +71,29 @@ do_filter <- function(db,
     
     to_eval <- lapply(av_names, function(nm){
       
-      # if(nm == "INSTCODE"){
-      #   frml <- paste0("dplyr::filter(", nm, " %in% ", "var_list[['", nm, "']]",")")
-      # }else{}
-        frml <- paste0("dplyr::filter(", nm, " == '", var_list[[nm]],"')")
+      qry <- paste0(nm, " = '",  var_list[[nm]],"'")
+      #frml <- paste0("dplyr::filter(", nm, " == '", var_list[[nm]],"')")
       
       
-      return(frml)
+      return(qry)
       
     }) %>% unlist %>% 
-      paste0( ., collapse = " %>% ") %>% 
-      paste0("db %>% ", .)
-    
-    filtered_db <- eval(parse(text = to_eval))
+      paste0( ., collapse = " AND ") %>% 
+      paste0(.,";")
+      #%>% paste0("db %>% ", .)
+    full_query = paste0("SELECT * FROM quality_score_sql WHERE ", to_eval)
+    #filtered_db <- eval(parse(text = to_eval))
+    print("cargue la BD")
+    filtered_db <- DBI::dbGetQuery(
+      conn = db_conn,
+      statement = full_query
+    )
   }else{
-    filtered_db <- db
+    stop("cargue toda la BD")
+    filtered_db <- DBI::bGetQuery(
+      conn = db_conn,
+      statement =  "SELECT * FROM quality_score_sql"
+    )
   }
   
   return(filtered_db)
@@ -106,9 +116,16 @@ filter_issue <- function(txt_vec, target){
 }
 
 
+db_conn <- DBI::dbConnect(drv = RSQLite::SQLite(), "./www/genesys_coord_check_to_app_new.sqlite")#read.csv("./www/genesys_coord_check_to_app_new.csv", header = T)
+inst_av <- DBI::dbGetQuery(
+  conn = db_conn,
+  statement = "SELECT DISTINCT INSTCODE FROM quality_score_sql;"
+) %>% unlist(., recursive = T, use.names = F)
 
-db <- read.csv("./www/genesys_coord_check_to_app_new.csv", header = T)
-gc()
+
+shiny::onStop(function() {
+  dbDisconnect(db_conn)
+})
 
 server <- function(input, output, session){
   
@@ -122,10 +139,10 @@ server <- function(input, output, session){
   output$filtros1 <- renderUI({
     
    
-    inst_code <- unique(db$INSTCODE)
-    cropname  <- c("All",unique(db$CROPNAME))
-    origcty   <- c("All", unique(db$ORIGCTY ))
-    markets   <- c("All", na.omit(unique(db$check_market_acc)))
+    inst_code <- inst_av
+    cropname  <- c("All")
+    origcty   <- c("All")
+    markets   <- c("All")
     
     tagList(
       
@@ -183,8 +200,8 @@ server <- function(input, output, session){
   ###############
   
   observeEvent(input$filt1, {
-    
-    rv_vals$db_clean <- do_filter(db       = db, 
+
+    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
                                   instcode = input$filt1,
                                   cropname = NULL,
                                   origcty  = NULL,
@@ -213,13 +230,16 @@ server <- function(input, output, session){
   })
   
   observeEvent(input$filt2, {
-    
-    rv_vals$db_clean <- do_filter(db       = db, 
+
+    if(input$filt2 != "All"){
+      
+    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
                                   instcode = input$filt1,
                                   cropname = input$filt2,
                                   origcty  = NULL,
                                   markets  = NULL )
     
+    }
     
     rv_vals$origcty     <- c("All", unique(rv_vals$db_clean$ ORIGCTY))
     rv_vals$markets     <- c("All", na.omit(unique(rv_vals$db_clean$check_market_acc)))
@@ -235,18 +255,17 @@ server <- function(input, output, session){
                       choices  = rv_vals$market,
                       selected = "All")
     
-    
   }, ignoreInit  = T)
   
   observeEvent(input$filt3, {
-    
-    
-    rv_vals$db_clean <- do_filter(db       = db, 
+
+    if(input$filt3 != "All"){
+    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
                                   instcode = input$filt1,
                                   cropname = input$filt2,
                                   origcty  = input$filt3,
                                   markets  = NULL)
-    
+    }
     rv_vals$markets     <- c("All", na.omit(unique(rv_vals$db_clean$check_market_acc)))
     
     
@@ -259,16 +278,15 @@ server <- function(input, output, session){
   }, ignoreInit  = T)
   
   observeEvent(input$filt4, {
-    rv_vals$db_clean <- do_filter(db       = db, 
+
+    if(input$filt4 != 'All'){
+    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
                                   instcode = input$filt1,
                                   cropname = input$filt2,
                                   origcty  = input$filt3,
                                   markets  = input$filt4)
-    
-    
-    
-    
-    
+    }
+  
     
   }, ignoreInit = T)
   
@@ -354,8 +372,7 @@ server <- function(input, output, session){
   
   observeEvent(rv_vals$db_clean, {
     
-    
-    rv_vals$db_clean <- rv_vals$db_clean %>% 
+    rv_vals$db_clean <- rv_vals$db_clean %>%
       dplyr::mutate(
         marker_col = case_when(
         quality_score == "High" ~ "#0B960B",
@@ -526,21 +543,43 @@ server <- function(input, output, session){
   output$gr2 <- renderPlotly({
     req(rv_vals$db_clean)
     
-    df = rv_vals$db_clean %>% 
+    df = rv_vals$db_clean %>%
       dplyr::mutate(quality_score = factor(quality_score , levels = c("High", "Moderate", "Low")),
-                    LI = ifelse(LI == "Completed", "Not necessary", LI)
-                    )%>% 
+                    LI = ifelse(LI == "Completed", "Not necessary", LI))  %>% 
       dplyr::group_by(quality_score, LI) %>% 
       count(.drop = F) %>%
-      dplyr::ungroup() %>% 
+      dplyr::ungroup()
+    
+    if(length(unique(df$quality_score)) != 3 | length(unique(df$LI)) != 4){
+      
+      cat_ql <- c("High", "Moderate", "Low")
+      cat_LI <- c("Not necessary", "Easy", "Moderate", "Hard")
+      
+      
+      cat_ql <- cat_ql[! cat_ql %in% unique(df$quality_score)]
+      cat_LI <- cat_LI[! cat_LI %in% unique(df$LI)]
+      
+      to_add = expand.grid(cat_ql, cat_LI)
+      names(to_add) = c("quality_score", "LI")
+      to_add$n = 0
+      
+      df <- df %>% 
+        bind_rows(to_add)
+    }
+    
+    df <- df %>% 
       tidyr::pivot_wider(., names_from = quality_score, values_from = n) %>% 
-      dplyr::mutate(across(everything(.), function(i){ifelse(is.na(i), 0, i)})) %>% 
+      dplyr::mutate(across(everything(.), function(i){ifelse(is.na(i), 0, i)}))  %>% 
       dplyr::mutate(High_perc = round(High/sum(High)*100, 1),
                     Moderate_perc = round(Moderate/sum(Moderate)*100, 1),
                     Low_perc  = round(Low/sum(Low)*100, 1),
                     LI = factor(LI, levels = c("Hard", "Moderate", "Easy", "Not necessary"))) %>% 
+      dplyr::mutate(across(where(is.numeric), function(i){ifelse(is.nan(i), 0, i)})) %>% 
       dplyr::arrange(LI) %>% 
       tibble::column_to_rownames(var = "LI")
+    
+    
+    
     
     widths <- colSums(df[, !grepl("_perc" , names(df))])
     marker_colors <- c('Hard' = "#ff0000", 'Moderate' = "#eab301", 'Easy' = "#7ed600",
