@@ -31,7 +31,7 @@ tree$issue_txt_desc <- apply(tree[, 1:(ncol(tree)-3)], 1, function(rw){
 
  db <- db %>%
    dplyr::left_join(., tree[, c("ROUTE", "issue_txt_desc")]) %>% 
-   dplyr::filter(INSTCODE %in% c("COL003", "LBN002")) |>
+   dplyr::filter(INSTCODE %in% c("COL003", "LBN002", "MEX002", "BEL084")) |>
    #dplyr::filter(!is.na(DECLONGITUDE) | !is.na(DECLATITUDE)) %>% 
    dplyr::mutate(
    quality_score = ifelse(SCORE == 9, "Moderate", quality_score),
@@ -43,7 +43,7 @@ tree$issue_txt_desc <- apply(tree[, 1:(ncol(tree)-3)], 1, function(rw){
                  quality_score, issue_txt_desc)
 #  %>%  
 #    #arrow::write_parquet(., "./coord_quality_score/www/genesys_coord_check_to_app_new.parquet")
-#    write_csv(., "./coord_quality_score/www/genesys_coord_check_to_app_new.csv")
+#    write_csv(db, "./genesys_coord_check_to_app_new.csv")
 #  
  conn <- dbConnect(drv = RSQLite::SQLite(), "./coord_quality_score/www/genesys_coord_check_to_app_new.sqlite")
 
@@ -68,6 +68,7 @@ db <- dbGetQuery(
   "SELECT * FROM quality_score_sql"
 )
 
+format(object.size(db), units = "Mb")
 
 
  

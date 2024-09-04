@@ -122,7 +122,6 @@ inst_av <- DBI::dbGetQuery(
   statement = "SELECT DISTINCT INSTCODE FROM quality_score_sql;"
 ) %>% unlist(., recursive = T, use.names = F)
 
-
 shiny::onStop(function() {
   dbDisconnect(db_conn)
 })
@@ -142,7 +141,7 @@ server <- function(input, output, session){
     inst_code <- inst_av
     cropname  <- c("All")
     origcty   <- c("All")
-    markets   <- c("All")
+    markets   <- c("All","Non market", "Market")
     
     tagList(
       
@@ -225,7 +224,10 @@ server <- function(input, output, session){
                       session  = session,
                       choices  = rv_vals$market,
                       selected = "All")
-    
+  
+    updatePickerInput(inputId  = "filt_issue",
+                      session  = session,
+                      selected = character(0))
     
   })
   
@@ -255,6 +257,10 @@ server <- function(input, output, session){
                       choices  = rv_vals$market,
                       selected = "All")
     
+    updatePickerInput(inputId  = "filt_issue",
+                      session  = session,
+                      selected = character(0))
+    
   }, ignoreInit  = T)
   
   observeEvent(input$filt3, {
@@ -274,6 +280,10 @@ server <- function(input, output, session){
                       choices  = rv_vals$market,
                       selected = "All")
     
+    updatePickerInput(inputId  = "filt_issue",
+                      session  = session,
+                      selected = character(0))
+    
     
   }, ignoreInit  = T)
   
@@ -286,6 +296,10 @@ server <- function(input, output, session){
                                   origcty  = input$filt3,
                                   markets  = input$filt4)
     }
+    
+    updatePickerInput(inputId  = "filt_issue",
+                      session  = session,
+                      selected = character(0))
   
     
   }, ignoreInit = T)
