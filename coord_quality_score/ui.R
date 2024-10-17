@@ -24,6 +24,7 @@ suppressMessages(if(!require(bslib)){install.packages("bslib");library(bslib)}el
 suppressMessages(if(!require(thematic)){install.packages("thematic");library(thematic)}else{library(thematic)})
 suppressMessages(if(!require(stringi)){install.packages("stringi");library(stringi)}else{library(stringi)})
 suppressMessages(if(!require(reactable)){install.packages("reactable");library(reactable)}else{library(reactable)})
+suppressMessages(if(!require(shiny.i18n)){install.packages("shiny.i18n");library(shiny.i18n)}else{library(shiny.i18n)})
 
 
 btn_style <- HTML('.btn-light {
@@ -44,12 +45,24 @@ btn_style <- HTML('.btn-light {
     --bs-btn-disabled-border-color: #f8f8f8;
 }
 
+.marker-cluster-acm div {
+    background-color: rgba(209, 209, 209, 0.8);
+}
+
+.marker-cluster-acm {
+	background-color: rgba(183, 183, 183, 0.6);
+	}
 
 .radiobtn {font-size:12px;height:35px;}
 ')
 
 #shinyOptions(bslib = TRUE)
 #bs_theme_fonts("Fira Code")
+
+trs <- Translator$new(translation_csvs_path = "./www/")
+trs$set_translation_language("en") # here you select the default translation to display
+
+
 
 ui <- page_navbar(
   theme = bs_theme(preset = "shiny", font_scale = 1),
@@ -58,7 +71,8 @@ ui <- page_navbar(
   inverse = TRUE,
   id = "navbar",
   fillable = "Dashboard",
-  nav_panel("Dashboard",
+  nav_panel(shiny.i18n::usei18n(trs),
+            title = trs$t("Dashboard"),
             layout_sidebar(
               border = T,
               fillable = F,
@@ -67,27 +81,27 @@ ui <- page_navbar(
                 id = "side1",
                 width = 300,
                 tags$head(tags$style(btn_style)),
-                title = img(src="https://alliancebioversityciat.org/sites/default/files/styles/1920_scale/public/images/Alliance%20Logo%20Refresh-color.jpg?itok=aWZGtycl"),
+                title = img(src="https://www.fao.org/images/cgrfalibraries/cgrfa-images/cgiar-initiative---genebanks-02.jpg?sfvrsn=1b1842cc_0"),
                 tags$br(),
                 uiOutput("filtros1")
               ),
-              tags$h3(tags$b("COORDINATES QUALITY STATUS"), style = "text-align: center;")
+              tags$h3(tags$b(trs$t("COORDINATES QUALITY STATUS")), style = "text-align: center;")
               ,layout_columns(
                 col_widths  = c(4, 4,4)
                 ,class = "mt-3"
                 ,row_heights = c(1, 1, 1)
                 ,value_box(
-                  "Total Accessions",
+                  trs$t("Total Accessions"),
                   uiOutput("vbox1", container = h2),
                   showcase = bsicons::bs_icon("geo")
                 )
                 ,value_box(
-                  "Missing coordinates",
+                  trs$t("Missing coordinates"),
                   uiOutput("vbox2", container = h2),
                   showcase = bsicons::bs_icon("x-octagon")
                 )
                 ,value_box(
-                  "% of missing coordinates",
+                  trs$t("Missing coordinates percentage"),
                   uiOutput("vbox3", container = h2),
                   showcase = bsicons::bs_icon("percent")
                 )
@@ -99,7 +113,7 @@ ui <- page_navbar(
                              ,card(
                                full_screen = T
                                ,card_header(
-                                 "Interactive Map"
+                                 trs$t("Interactive Map")
                                )
                                ,leafletOutput("map1")
                                #reactableOutput("rct1", width = "90%") 
@@ -109,7 +123,7 @@ ui <- page_navbar(
                                full_screen = T
                                ,height = "800px"
                                ,card_header(
-                                 "Quality score overall distribution"
+                                 trs$t("Quality score overall distribution")
                                )
                                ,card_body( plotlyOutput("gr1", height = "100%"),
                                            plotlyOutput("gr2", height = "100%"))
@@ -127,7 +141,7 @@ ui <- page_navbar(
                                  ,card_body(
                                   shinyWidgets::pickerInput(
                                      inputId = "filt_issue",
-                                     label = "Select issue: ", 
+                                     label = trs$t("Select issue: "), 
                                      choices = c("Missing ORIGCTY",  
                                                  "Missing Coordinates", 
                                                  "Zero coordinate", 
@@ -149,6 +163,7 @@ ui <- page_navbar(
                                    ,reactableOutput("rt1", height  = "800px"),
                                   tags$hr(),
                                   downloadBttn(
+                                    label = trs$t("Download"),
                                     outputId = "down_btn",
                                     style = "pill",
                                     color = "primary",
@@ -158,12 +173,12 @@ ui <- page_navbar(
                                ,card(
                                  full_screen = T
                                  ,card_header(
-                                   "Additional Info"
+                                   trs$t("Additional Info")
                                  )
-                                 ,card_body(tags$h3("Accession status:"),
+                                 ,card_body(tags$h3(trs$t("Accession status:")),
                                             htmlOutput("add_info1"),
                                             tags$hr(),
-                                            tags$h3("Maps info:"),
+                                            tags$h3(trs$t("Selected acc:")),
                                             leafletOutput("map2")
                                             ) 
                                )
@@ -171,7 +186,26 @@ ui <- page_navbar(
               )
               
             )
-  )
+  ),
+  nav_spacer(),
+  nav_menu(title = "Language",
+           align = "right",
+           icon = tags$i(class="fa-solid fa-language"),
+           nav_item( 
+             radioGroupButtons(
+               inputId = "lan",
+               label = "",
+               status = "default",
+               choices = c("English" = "en", "Español" = "es"),
+               direction = "vertical",
+               justified = T,
+               individual = F,
+               checkIcon = list(
+                 yes = icon("ok", 
+                            lib = "glyphicon"))
+               
+             )
+             ))
   
   
 )

@@ -26,6 +26,10 @@ suppressMessages(if(!require(stringi)){install.packages("stringi");library(strin
 suppressMessages(if(!require(reactable)){install.packages("reactable");library(reactable)}else{library(reactable)})
 suppressMessages(if(!require(DBI)){install.packages("DBI");library(DBI)}else{library(DBI)})
 suppressMessages(if(!require(RSQLite)){install.packages("RSQLite");library(RSQLite)}else{library(RSQLite)})
+suppressMessages(if(!require(shiny.i18n)){install.packages("shiny.i18n");library(shiny.i18n)}else{library(shiny.i18n)})
+
+
+translator <- Translator$new(translation_csvs_path = "./www/")
 
 
 getColor <- function(df) {
@@ -128,6 +132,27 @@ shiny::onStop(function() {
 
 server <- function(input, output, session){
   
+  ####################
+  ### LANGUAGE ######
+  ##################
+  
+  
+  trs <- reactive({
+    selected <- input$lan
+    
+    if (length(selected) > 0 && selected %in% translator$get_languages()) {
+      translator$set_translation_language(selected)
+    }
+    
+    translator
+  })
+  
+  observeEvent(input$lan, {
+    # This print is just for demonstration
+    print(paste("Language change!", input$lan))
+    # Here is where we update language in session
+    shiny.i18n::update_lang(input$lan)
+  })
   
   rv_vals        <- reactiveValues()
   #rv_vals$db_raw <- db
@@ -367,9 +392,26 @@ server <- function(input, output, session){
         #color = ~markers$marker_col,
         #fillOpacity = 0.8,
         #stroke = T,
-        icon = ~icons,
+        #icon = ~icons,
         popup = ~markers$popup_text,
-        clusterOptions = markerClusterOptions() 
+        clusterOptions = markerClusterOptions(
+          iconCreateFunction  = JS("
+      function(cluster) {
+        var childCount = cluster.getChildCount();
+
+		var c = ' marker-cluster-';
+		if (childCount < 10) {
+			c += 'small';
+		} else if (childCount < 100) {
+			c += 'medium';
+		} else {
+			c += 'large';
+		}
+
+		return new L.DivIcon({ html: '<div><span>' + childCount + '</span></div>', className: 'marker-cluster marker-cluster-acm', iconSize: new L.Point(40, 40) });
+      }
+    ")
+          ) 
       )
     
     
@@ -457,7 +499,24 @@ server <- function(input, output, session){
           #stroke = T,
           icon = ~icons,
           popup = ~markers$popup_text,
-          clusterOptions = markerClusterOptions() 
+          clusterOptions = markerClusterOptions(
+            iconCreateFunction = JS("
+      function(cluster) {
+        var childCount = cluster.getChildCount();
+
+		var c = ' marker-cluster-';
+		if (childCount < 10) {
+			c += 'small';
+		} else if (childCount < 100) {
+			c += 'medium';
+		} else {
+			c += 'large';
+		}
+
+		return new L.DivIcon({ html: '<div><span>' + childCount + '</span></div>', className: 'marker-cluster marker-cluster-acm', iconSize: new L.Point(40, 40) });
+      }
+    ")
+          ) 
         )
     }else{
       

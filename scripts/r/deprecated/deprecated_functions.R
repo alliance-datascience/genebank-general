@@ -102,6 +102,108 @@ id_empty_roads_dist <- function(id_lonlat_av, df){
 
 
 
+
+#' Function to copy world Roads shapefiles files from S3 bucket to EC2 R-studio session
+#' @param s3_clt (object):S3 client from paws.strograge call
+#' @param out_dir_name (character): out directory name
+#' @return NULL
+copy_s3_roads_shp <- function( s3_clt, out_dir_name){
+  
+  
+  out_dir <- here::here( out_dir_name)
+  if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
+  
+  nms_fls <- s3_clt$list_objects(
+    Bucket  = "genebanks",
+    Prefix  = "zone=landing/source=OSM_roads/"
+  )
+  
+  nms <- sapply(nms_fls$Contents, function(lst)lst$Key)
+  nms <- nms[grepl(".gpkg$", nms)]
+  #nms <- stringr::str_extract(nms, "country=[a-zA-Z]{3}")
+  #nms <- stringr::str_replace(nms, "country=", "")
+  #nms <- unique(nms)
+  #nms <- na.omit(nms)
+  
+  
+  for(c_nm in nms){
+    
+    cat("> Downloading data for: ", c_nm, "\n")
+    
+    
+    b_nm_ext <- basename(c_nm)
+    #b_nm <- gsub(".gpkg$", "", b_nm_ext)
+    
+    out_file <- here::here(out_dir, b_nm_ext)
+    if(!file.exists(out_file)){
+      
+      s3_clt$download_file(
+        Bucket = "genebanks",
+        Key = c_nm,
+        Filename = out_file
+      )
+      
+    }else{
+      cat(">>> file aready exists. \n")
+    }
+    
+    
+    
+    
+  }
+  
+  return(NULL)
+}
+
+
+
+#' Function to copy roads_dist_db from S3 bucket to EC2 R-studio session
+#' @param s3_clt (object):S3 client from paws.strograge call
+#' @param out_dir_name (character): out directory name
+#' @return NULL
+copy_s3_roads_dist_db_files <- function( s3_clt, out_dir_name){
+  
+  
+  out_dir <- here::here( out_dir_name)
+  
+  nms_fls <- s3_clt$list_objects(
+    Bucket  = "genebanks",
+    Prefix  = "zone=landing/source=roads_dist_db/"
+  )
+  
+  nms <- sapply(nms_fls$Contents, function(lst)lst$Key)
+  nms <- nms[grepl(".parquet$", nms)]
+  
+  if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
+  
+  for(c_nm in nms){
+    
+    cat("> Downloading data for: ", c_nm, "\n")
+    b_nm_ext <- basename(c_nm)
+    
+    out_file <- here::here(out_dir, b_nm_ext)
+    
+    if(!file.exists(out_file)){
+      s3_clt$download_file(
+        Bucket = "genebanks",
+        Key = c_nm,
+        Filename = out_file
+      )
+    }else{
+      cat(">>> File already exists. \n")
+    }
+    
+    
+    
+  }
+  
+  
+  return(NULL)
+  
+}
+
+
+
 ############################
 #### DISTANCE TO ROADS ####
 ##########################
