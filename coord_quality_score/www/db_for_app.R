@@ -1,9 +1,9 @@
 require(pacman)
-pacman::p_load(readxl, writexl, tidyverse, vroom)
+pacman::p_load(readxl, writexl, tidyverse, vroom, RSQLite, DBI)
 
 
  
-db <- vroom::vroom("C:/Users/acmendez/Downloads/genesys_quality_score_08-2024.csv")
+db <- vroom::vroom("D:/OneDrive - CGIAR/Genebanks/data/genesys_quality_score_09-2024.csv")
 
 tree <-read.csv("D:/OneDrive - CGIAR/Genebanks/data/decision_tree_v1.csv") 
 
@@ -54,13 +54,27 @@ tree$issue_txt_desc <- apply(tree[, 1:(ncol(tree)-3)], 1, function(rw){
    overwrite = TRUE
  )
  
- dbDisconnect(conn)
  
+country_codes <- read.csv("https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/refs/heads/master/all/all.csv", header = T)
 
-#  db <- read.csv("./coord_quality_score/www/genesys_coord_check_to_app_new.csv", header = T)
-#  format(object.size(db), units = "Mb")
+country_codes <- country_codes %>% 
+  #dplyr::mutate(name = str_replace(name, "\\,.*$", ""  )) %>% 
+  dplyr::select(name, iso3 = alpha.3) %>% 
+  bind_rows(., data.frame(name = c("Union of Soviet Socialist Republics (USSR)", "Yugoslavia", "Kosovo", "Czechoslovakia", "Zaire", "Burma", "Serbia and Montenegro", "XAG", "XAE", "Netherlands Antilles"), 
+                          iso3 = c("SUN", "YUG", "XKX", "CSK", "ZAR", "BUR", "SCG", "XAG", "XAE", "ANT")))
+  
+dbWriteTable(
+  conn = conn,
+  name = "country_iso3",
+  value = country_codes,
+  overwrite = TRUE
+)
 
 
+dbDisconnect(conn)
+
+
+  
  db_conn <- dbConnect(drv = RSQLite::SQLite(), "./coord_quality_score/www/genesys_coord_check_to_app_new.sqlite")
  
 db <- dbGetQuery(
@@ -69,6 +83,26 @@ db <- dbGetQuery(
 )
 
 format(object.size(db), units = "Mb")
+
+
+db1 <- vroom::vroom("D:/OneDrive - CGIAR/Genebanks/data/genesys_quality_score_08-2024.csv")
+db2 <- vroom::vroom("D:/OneDrive - CGIAR/Genebanks/data/genesys_quality_score_09-2024.csv")
+
+
+db1 %>% 
+  filter(INSTCODE == "MEX002") %>% 
+  dplyr::mutate(
+    quality_score = ifelse(SCORE == 9, "Moderate", quality_score)) %>% 
+  pull(quality_score) %>% 
+  table()
+
+db2%>% 
+  filter(INSTCODE == "MEX002") %>%
+  dplyr::mutate(
+    quality_score = ifelse(SCORE == 9, "Moderate", quality_score)) %>% 
+  pull(quality_score) %>% 
+  table()
+
 
 
  

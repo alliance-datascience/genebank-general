@@ -1,6 +1,35 @@
 en,es
 Dashboard,Tablero
 COORDINATES QUALITY STATUS,CALIDAD DE LAS COORDENADAS
+Last update,Ultima actualizacion
 Total Accessions,Total Accesiones
 Missing coordinates,Sin Coordenadas
 Missing coordinates percentage,Porcentaje Sin Coordenadas
+Interactive Map,Mapa interactivo
+Quality score overall distribution,Distribucion general del score
+Table,Tabla
+Filter by issue,Filtrar por inconsistencia
+Download,Descargar
+Additional Info,Informacion adicional
+Accession status,Estado de la accesion
+Accession location,Localizacion de la accesion
+Institution Code,Codigo de institucion
+Crop Name,Nombre del cultivo
+Origin Country,Pais de origen
+Collected in market,Colectado en mercado
+ELEVATION,ELEVACION
+Mts above the sea level,Mts sobre el nivel del mar
+TERRAIN SLOPE,PENDIENTE DEL TERRENO
+degree,grados
+ISSUE,INCONSISTENCIA
+Filter,Filtrar
+No accessions found,No se encontraron accesiones
+No data to plot,Sin datos para graficar
+Apply filters,Aplicar filtros
+Refresh filters,Limpiar filtros
+GENESYS institution code,GENESYS codigo de institucion
+Crop name as appear in GENESYS,Nombre del cultivo en GENESYS
+Country of origin where accession was collected as appear in GENESYS,Pais desde donde proviene la accesion segun GENESYS
+Wheter accession was collected in a market,Filtrar por accesiones colectadas en mercados
+Download filtered table,Descargar tabla filtrada
+Select an accession from the table,Seleccionar una accesion de la tabla

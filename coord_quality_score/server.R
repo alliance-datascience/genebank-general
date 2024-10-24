@@ -27,7 +27,9 @@ suppressMessages(if(!require(reactable)){install.packages("reactable");library(r
 suppressMessages(if(!require(DBI)){install.packages("DBI");library(DBI)}else{library(DBI)})
 suppressMessages(if(!require(RSQLite)){install.packages("RSQLite");library(RSQLite)}else{library(RSQLite)})
 suppressMessages(if(!require(shiny.i18n)){install.packages("shiny.i18n");library(shiny.i18n)}else{library(shiny.i18n)})
+suppressMessages(if(!require(bsplus)){install.packages("bsplus");library(bsplus)}else{library(bsplus)})
 
+source("www/helpers.R", local = TRUE)
 
 translator <- Translator$new(translation_csvs_path = "./www/")
 
@@ -104,6 +106,61 @@ do_filter <- function(db_conn,
 }
 
 
+get_opts  <- function(db_conn, 
+                      instcode = NULL,
+                      cropname = NULL,
+                      origcty  = NULL,
+                      markets   = NULL
+){
+  
+  var_list <-  list("INSTCODE" = instcode,
+                    "CROPNAME" = cropname,
+                    "ORIGCTY"  = origcty,
+                    "check_market_acc" = markets)
+  
+  var_list <- lapply(var_list, check_opt)
+  
+  are_null <- sapply(var_list, is.null)
+  
+  
+  null_names <- names(var_list[are_null])
+  av_names   <- names(var_list[!are_null])
+  av_opts    <- unlist(var_list[!are_null])
+  
+  cols = paste0(null_names, collapse =", ")
+  where = paste0(paste(av_names, sprintf("'%s'", av_opts), sep  = " = "), collapse = " AND ")
+  
+  full_query <- paste0("SELECT DISTINCT ", cols, " FROM quality_score_sql WHERE ", where )
+  opts <- DBI::dbGetQuery(
+    conn = db_conn,
+    statement = full_query
+  )
+  
+  to_ret <- apply(opts,2,  function(vec){unique(unlist(vec))})
+  to_ret <- c(var_list[!are_null], to_ret)
+  
+  
+  return(to_ret)
+}
+
+
+
+country_name <- function(iso3, db_conn){
+  
+  tmp_df <- DBI::dbGetQuery(
+       conn = db_conn,
+       statement = paste0("SELECT * FROM country_iso3 WHERE iso3 IN (", paste0(sprintf("'%s'", iso3), collapse = ",") ,");")
+     ) 
+    
+  
+  lst <- sapply(tmp_df$iso3, list)
+  names(lst) = tmp_df$name
+  lst = append(lst, list("All" = "All"), after = 0)
+  
+  return(lst)
+ 
+}
+
 filter_issue <- function(txt_vec, target){
   #txt_vec <- c("Missing COLLSITE", 'Georeferenced to a centroid')
   txt_vec <- unlist(txt_vec)
@@ -121,11 +178,23 @@ filter_issue <- function(txt_vec, target){
 
 
 db_conn <- DBI::dbConnect(drv = RSQLite::SQLite(), "./www/genesys_coord_check_to_app_new.sqlite")#read.csv("./www/genesys_coord_check_to_app_new.csv", header = T)
-inst_av <- DBI::dbGetQuery(
-  conn = db_conn,
-  statement = "SELECT DISTINCT INSTCODE FROM quality_score_sql;"
-) %>% unlist(., recursive = T, use.names = F)
+inst_av <- list("COL003-CIAT" = "COL003",
+    "LBN002-ICARDA" = "LBN002",
+    "MEX002-CIMMYT" = "MEX002",
+    "BEL084-Bioversity" = "BEL084"
+  )
 
+#   DBI::dbGetQuery(
+#   conn = db_conn,
+#   statement = "SELECT DISTINCT INSTCODE FROM quality_score_sql;"
+# ) %>% unlist(., recursive = T, use.names = F)
+
+  # c("COL003-CIAT" = "COL003",
+  #   "LBN002-ICARDA" = "LBN002",
+  #   "MEX002-CIMMYT" = "MEX002",
+  #   "BEL084-Bioversity" = "BEL084"
+  # )
+  
 shiny::onStop(function() {
   dbDisconnect(db_conn)
 })
@@ -147,14 +216,14 @@ server <- function(input, output, session){
     translator
   })
   
-  observeEvent(input$lan, {
-    # This print is just for demonstration
-    print(paste("Language change!", input$lan))
-    # Here is where we update language in session
-    shiny.i18n::update_lang(input$lan)
-  })
+  
   
   rv_vals        <- reactiveValues()
+  rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
+                                instcode = "COL003",
+                                cropname = NULL,
+                                origcty  = NULL,
+                                markets  = NULL)
   #rv_vals$db_raw <- db
   ###################
   ### FILTROS UI ###
@@ -163,56 +232,90 @@ server <- function(input, output, session){
   output$filtros1 <- renderUI({
     
    
+    opts <- get_opts(db_conn, 
+                     instcode = "COL003",
+                     cropname = NULL,
+                     origcty  = NULL,
+                     markets   = NULL)
+    
+    cropname    <- c("All", opts$CROPNAME)
+    origcty     <- country_name(opts$ORIGCTY, db_conn)
+    markets     <- c("All", opts$check_market_acc)
+    
     inst_code <- inst_av
-    cropname  <- c("All")
-    origcty   <- c("All")
-    markets   <- c("All","Non market", "Market")
+    
     
     tagList(
       
       pickerInput(
         inputId = "filt1",
-        label = "Institution Code:", 
+        label = trs()$t("Institution Code"), 
         choices = inst_code,
         multiple = F,
         selected = "COL003",
         options = pickerOptions(container = "body", 
                                 liveSearch = TRUE),
         width = "100%"
-      ),
+      ) %>% 
+        bs_embed_tooltip( title = trs()$t("GENESYS institution code"), placement = "left"),
       
       tags$br(),
       
       pickerInput(
         inputId  = "filt2",
-        label    = "Crop Name:", 
+        label    = trs()$t("Crop Name"), 
         choices  =  cropname,
         selected = "All",
         options  = pickerOptions(container = "body", 
                                  liveSearch = TRUE),
         width    = "100%"
-      ),
+      ) %>% 
+        bs_embed_tooltip( title = trs()$t("Crop name as appear in GENESYS"), placement = "left"),
       
       tags$br(),
       
       pickerInput(
         inputId  = "filt3",
-        label    = "Origin Country:", 
+        label    = trs()$t("Origin Country"), 
         choices  = origcty,
         selected = "All",
         options  = pickerOptions(container = "body", 
                                  liveSearch = TRUE),
         width    = "100%"
-      ),
+      ) %>% 
+        bs_embed_tooltip( title = trs()$t("Country of origin where accession was collected as appear in GENESYS"), placement = "left"),
       
       tags$br(),
       
       pickerInput(
         inputId  = "filt4",
-        label    = "Markets:", 
+        label    = trs()$t("Collected in market"), 
         choices  = markets,
         selected = "All",
         width    = "100%"
+      )%>% 
+        bs_embed_tooltip( title = trs()$t("Wheter accession was collected in a market"), placement = "left"),
+      
+      tags$br(),
+      
+      tags$div(
+        tagList(
+          actionButton(
+            inputId = "btn_filt",
+            label = trs()$t("Filter"),
+            class = "btn btn-secondary btn-lg",
+            width = "40%") %>% 
+            bs_embed_tooltip( title = trs()$t("Apply filters"), placement = "left"),
+          actionButton(
+            inputId = "btn_refresh",
+            label = "",
+            icon = shiny::icon("sync-alt"),
+            class = "btn btn-outline-secondary btn-lg",
+            width = "20%") %>%  
+            bs_embed_tooltip( title = trs()$t("Refresh filters"), placement = "right")
+          
+        ),
+        style = "margin: auto; width: 80%; padding:10px;"
       )
       
     )
@@ -223,22 +326,36 @@ server <- function(input, output, session){
   ## observe ####
   ###############
   
-  observeEvent(input$filt1, {
-
+  observeEvent(input$lan, {
+    # This print is just for demonstration
+    print(paste("Language change!", input$lan))
+    # Here is where we update language in session
+    shiny.i18n::update_lang(input$lan)
+  })
+  
+  observeEvent(input$btn_refresh, {
+    
     rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
-                                  instcode = input$filt1,
+                                  instcode = "COL003",
                                   cropname = NULL,
                                   origcty  = NULL,
                                   markets  = NULL)
     
-    rv_vals$cropname    <- c("All", unique(rv_vals$db_clean$CROPNAME))
-    rv_vals$origcty     <- c("All", unique(rv_vals$db_clean$ORIGCTY))
-    rv_vals$markets     <- c("All", unique(rv_vals$db_clean$check_market_acc))
+    opts <- get_opts(db_conn, 
+                     instcode = "COL003",
+                     cropname = NULL,
+                     origcty  = NULL,
+                     markets   = NULL)
+    
+    rv_vals$cropname    <- c("All", opts$CROPNAME)
+    rv_vals$origcty     <- country_name(opts$ORIGCTY, db_conn)
+    rv_vals$markets     <- c("All", opts$check_market_acc)
     
     updatePickerInput(inputId  = "filt2",
                       session  = session,
                       choices  = rv_vals$cropname,
                       selected = "All")
+    
     
     updatePickerInput(inputId  = "filt3",
                       session  = session,
@@ -249,7 +366,62 @@ server <- function(input, output, session){
                       session  = session,
                       choices  = rv_vals$market,
                       selected = "All")
+    
+    
+    
+  })
   
+  observeEvent(input$btn_filt, {
+    
+    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
+                                  instcode = input$filt1,
+                                  cropname = input$filt2,
+                                  origcty  = input$filt3,
+                                  markets  = input$filt4)
+    
+    if(nrow(rv_vals$db_clean) == 0){
+      shinyWidgets::sendSweetAlert(
+        session = session,
+        title   = trs()$t("No accessions found"),
+        text    = "",
+        btn_colors = "#6c757d",
+        type    = "error"
+      )
+    }
+    
+  })
+  
+  
+  
+  observeEvent(input$filt1, {
+    print("active filt1")
+    
+    opts <- get_opts(db_conn, 
+             instcode = input$filt1,
+             cropname = NULL,
+             origcty  = NULL,
+             markets   = NULL)
+    
+    rv_vals$cropname    <- c("All", opts$CROPNAME)
+    rv_vals$origcty     <- country_name(opts$ORIGCTY, db_conn)
+    rv_vals$markets     <- c("All", opts$check_market_acc)
+    
+    updatePickerInput(inputId  = "filt2",
+                      session  = session,
+                      choices  = rv_vals$cropname,
+                      selected = "All")
+   
+    
+    updatePickerInput(inputId  = "filt3",
+                      session  = session,
+                      choices  = rv_vals$origcty,
+                      selected = "All")
+    
+    updatePickerInput(inputId  = "filt4",
+                      session  = session,
+                      choices  = rv_vals$market,
+                      selected = "All")
+    
     updatePickerInput(inputId  = "filt_issue",
                       session  = session,
                       selected = character(0))
@@ -257,20 +429,16 @@ server <- function(input, output, session){
   })
   
   observeEvent(input$filt2, {
-
-    if(input$filt2 != "All"){
-      
-    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
-                                  instcode = input$filt1,
-                                  cropname = input$filt2,
-                                  origcty  = NULL,
-                                  markets  = NULL )
+    print("active filt2")
     
-    }
+    opts <- get_opts(db_conn, 
+                     instcode = input$filt1,
+                     cropname = input$filt2,
+                     origcty  = NULL,
+                     markets   = NULL)
     
-    rv_vals$origcty     <- c("All", unique(rv_vals$db_clean$ ORIGCTY))
-    rv_vals$markets     <- c("All", na.omit(unique(rv_vals$db_clean$check_market_acc)))
-    
+    rv_vals$origcty     <- country_name(opts$ORIGCTY, db_conn)
+    rv_vals$markets     <- c("All", na.omit(opts$check_market_acc))
     
     updatePickerInput(inputId  = "filt3",
                       session  = session,
@@ -289,17 +457,16 @@ server <- function(input, output, session){
   }, ignoreInit  = T)
   
   observeEvent(input$filt3, {
-
-    if(input$filt3 != "All"){
-    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
-                                  instcode = input$filt1,
-                                  cropname = input$filt2,
-                                  origcty  = input$filt3,
-                                  markets  = NULL)
-    }
-    rv_vals$markets     <- c("All", na.omit(unique(rv_vals$db_clean$check_market_acc)))
+    print("active filt3")
+    opts <- get_opts(db_conn, 
+                     instcode = input$filt1,
+                     cropname = input$filt2,
+                     origcty  = input$filt3,
+                     markets   = NULL)
     
+    rv_vals$markets     <- c("All", na.omit(opts$check_market_acc))
     
+    freezeReactiveValue(input, "filt4")
     updatePickerInput(inputId  = "filt4",
                       session  = session,
                       choices  = rv_vals$market,
@@ -313,23 +480,17 @@ server <- function(input, output, session){
   }, ignoreInit  = T)
   
   observeEvent(input$filt4, {
-
-    if(input$filt4 != 'All'){
-    rv_vals$db_clean <- do_filter(db_conn  = db_conn, 
-                                  instcode = input$filt1,
-                                  cropname = input$filt2,
-                                  origcty  = input$filt3,
-                                  markets  = input$filt4)
-    }
-    
+    print("active filt4")
     updatePickerInput(inputId  = "filt_issue",
                       session  = session,
                       selected = character(0))
-  
+    
     
   }, ignoreInit = T)
   
   
+  
+ 
 # ValueBoxs ---------------------------------------------------------------
 
   output$vbox1 <- renderUI({
@@ -535,7 +696,13 @@ server <- function(input, output, session){
         )
     }
     
-     
+    output$add_info1 <- renderPrint({trs()$t("Select an accession from the table")})
+    
+    leafletProxy("map2") %>% 
+      leaflet::clearMarkers() %>% 
+      clearMarkerClusters() %>% 
+      addProviderTiles(providers$CartoDB.Positron) %>% 
+      setView(lat = 0, lng = 0, zoom = 1)
     
   }, priority = 100)
   
@@ -579,36 +746,42 @@ server <- function(input, output, session){
     
     req(rv_vals$db_clean)
     
-    to_plot <-  rv_vals$db_clean %>%
-      dplyr::mutate(quality_score       = factor(quality_score, levels = c("High", "Moderate","Low") )) %>% 
-      dplyr::group_by(quality_score ) %>%
-      dplyr::tally() %>%
-      dplyr::mutate(text = paste0("Count: ", n)) %>% 
-      dplyr::mutate(n = round(n/sum(n)*100, 1))
-    
-    cols <- dplyr::case_when(
-      to_plot$quality_score == "High" ~ "#0B960B",
-      to_plot$quality_score ==  "Moderate"  ~ "#FFC300",
-      .default = "#DE1700")
-    
-    plot_ly(data = to_plot,
-            labels =  ~quality_score,
-            values = ~n,
-            text = ~text,
-            sort = FALSE,
-            marker = list(colors = cols),
-            textposition = 'outside'
-    ) %>% 
-      add_pie(hole = 0.4) %>% 
-      layout(title = "",
-             showlegend = T,
-             
-             xaxis = list(showgrid = F, zeroline = FALSE, showticklabels = FALSE),
-             yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
-             uniformtext=list(minsize=8, mode='hide')
+    if(nrow(rv_vals$db_clean) >= 1){
+      
+      to_plot <-  rv_vals$db_clean %>%
+        dplyr::mutate(quality_score       = factor(quality_score, levels = c("High", "Moderate","Low") )) %>% 
+        dplyr::group_by(quality_score ) %>%
+        dplyr::tally() %>%
+        dplyr::mutate(text = paste0("Count: ", n)) %>% 
+        dplyr::mutate(n = round(n/sum(n)*100, 1))
+      
+      cols <- dplyr::case_when(
+        to_plot$quality_score == "High" ~ "#0B960B",
+        to_plot$quality_score ==  "Moderate"  ~ "#FFC300",
+        .default = "#DE1700")
+      
+      plot_ly(data = to_plot,
+              labels =  ~quality_score,
+              values = ~n,
+              text = ~text,
+              sort = FALSE,
+              marker = list(colors = cols),
+              textposition = 'outside'
       ) %>% 
-      style(hoverinfo = 'none')
-    
+        add_pie(hole = 0.4) %>% 
+        layout(title = "",
+               showlegend = T,
+               
+               xaxis = list(showgrid = F, zeroline = FALSE, showticklabels = FALSE),
+               yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+               uniformtext=list(minsize=8, mode='hide')
+        ) %>% 
+        style(hoverinfo = 'none')
+      
+      
+    }else{
+      plotly_empty(type = "scatter", mode = "markers")
+    }
     
   })
   
@@ -616,83 +789,87 @@ server <- function(input, output, session){
   output$gr2 <- renderPlotly({
     req(rv_vals$db_clean)
     
-    df = rv_vals$db_clean %>%
-      dplyr::mutate(quality_score = factor(quality_score , levels = c("High", "Moderate", "Low")),
-                    LI = ifelse(LI == "Completed", "Not necessary", LI))  %>% 
-      dplyr::group_by(quality_score, LI) %>% 
-      count(.drop = F) %>%
-      dplyr::ungroup()
-    
-    if(length(unique(df$quality_score)) != 3 | length(unique(df$LI)) != 4){
+    if(nrow(rv_vals$db_clean)>=1){
       
-      cat_ql <- c("High", "Moderate", "Low")
-      cat_LI <- c("Not necessary", "Easy", "Moderate", "Hard")
+      df = rv_vals$db_clean %>%
+        dplyr::mutate(quality_score = factor(quality_score , levels = c("High", "Moderate", "Low")),
+                      LI = ifelse(LI == "Completed", "Not necessary", LI))  %>% 
+        dplyr::group_by(quality_score, LI) %>% 
+        count(.drop = F) %>%
+        dplyr::ungroup()
       
-      
-      cat_ql <- cat_ql[! cat_ql %in% unique(df$quality_score)]
-      cat_LI <- cat_LI[! cat_LI %in% unique(df$LI)]
-      
-      to_add = expand.grid(cat_ql, cat_LI)
-      names(to_add) = c("quality_score", "LI")
-      to_add$n = 0
+      if(length(unique(df$quality_score)) != 3 | length(unique(df$LI)) != 4){
+        
+        cat_ql <- c("High", "Moderate", "Low")
+        cat_LI <- c("Not necessary", "Easy", "Moderate", "Hard")
+        
+        
+        cat_ql <- cat_ql[! cat_ql %in% unique(df$quality_score)]
+        cat_LI <- cat_LI[! cat_LI %in% unique(df$LI)]
+        
+        to_add = expand.grid(cat_ql, cat_LI)
+        names(to_add) = c("quality_score", "LI")
+        to_add$n = 0
+        
+        df <- df %>% 
+          bind_rows(to_add)
+      }
       
       df <- df %>% 
-        bind_rows(to_add)
-    }
-    
-    df <- df %>% 
-      tidyr::pivot_wider(., names_from = quality_score, values_from = n) %>% 
-      dplyr::mutate(across(everything(.), function(i){ifelse(is.na(i), 0, i)}))  %>% 
-      dplyr::mutate(High_perc = round(High/sum(High)*100, 1),
-                    Moderate_perc = round(Moderate/sum(Moderate)*100, 1),
-                    Low_perc  = round(Low/sum(Low)*100, 1),
-                    LI = factor(LI, levels = c("Hard", "Moderate", "Easy", "Not necessary"))) %>% 
-      dplyr::mutate(across(where(is.numeric), function(i){ifelse(is.nan(i), 0, i)})) %>% 
-      dplyr::arrange(LI) %>% 
-      tibble::column_to_rownames(var = "LI")
-    
-    
-    
-    
-    widths <- colSums(df[, !grepl("_perc" , names(df))])
-    marker_colors <- c('Hard' = "#ff0000", 'Moderate' = "#eab301", 'Easy' = "#7ed600",
-                       "Not necessary" = "#a7a7a7")
-    
-    
-    fig1 <- plot_ly()
-    
-    for (idx in rownames(df)) {
-      dff <- df[idx, ]
-      fig1 <- fig1 %>%
-        add_trace(
-          x = cumsum(widths) - widths,
-          y = as.numeric(dff[grepl("_perc" , names(df))]),
-          width = widths,
-          marker = list(color = marker_colors[idx]),
-          text = sprintf('%.1f%%', as.numeric(dff[grepl("_perc" , names(df))])),
-          name = idx,
-          type = 'bar',
-          offset = 0
+        tidyr::pivot_wider(., names_from = quality_score, values_from = n) %>% 
+        dplyr::mutate(across(everything(.), function(i){ifelse(is.na(i), 0, i)}))  %>% 
+        dplyr::mutate(High_perc = round(High/sum(High)*100, 1),
+                      Moderate_perc = round(Moderate/sum(Moderate)*100, 1),
+                      Low_perc  = round(Low/sum(Low)*100, 1),
+                      LI = factor(LI, levels = c("Hard", "Moderate", "Easy", "Not necessary"))) %>% 
+        dplyr::mutate(across(where(is.numeric), function(i){ifelse(is.nan(i), 0, i)})) %>% 
+        dplyr::arrange(LI) %>% 
+        tibble::column_to_rownames(var = "LI")
+      
+      
+      widths <- colSums(df[, !grepl("_perc" , names(df))])
+      marker_colors <- c('Hard' = "#ff0000", 'Moderate' = "#eab301", 'Easy' = "#7ed600",
+                         "Not necessary" = "#a7a7a7")
+      
+      
+      fig1 <- plot_ly()
+      
+      for (idx in rownames(df)) {
+        dff <- df[idx, ]
+        fig1 <- fig1 %>%
+          add_trace(
+            x = cumsum(widths) - widths,
+            y = as.numeric(dff[grepl("_perc" , names(df))]),
+            width = widths,
+            marker = list(color = marker_colors[idx]),
+            text = sprintf('%.1f%%', as.numeric(dff[grepl("_perc" , names(df))])),
+            name = idx,
+            type = 'bar',
+            offset = 0
+          )
+      }
+      
+      
+      fig1 %>%
+        layout(
+          barmode = 'stack',
+          xaxis = list(
+            tickvals = cumsum(widths) - widths/2,
+            ticktext = names(df[, !grepl("_perc" , names(df))]),
+            title = "Quality"
+          ),
+          yaxis = list(range = c(0, 100),
+                       title = "Percentage (%)"),
+          legend = list(title = list(text = "<b> Level of improvement </b>"))
         )
+      
+    }else{
+      
+      plotly_empty(type = "scatter", mode = "markers")
+      
     }
-    
-    
-     fig1 %>%
-      layout(
-        barmode = 'stack',
-        xaxis = list(
-          tickvals = cumsum(widths) - widths/2,
-          ticktext = names(df[, !grepl("_perc" , names(df))]),
-          title = "Quality"
-        ),
-        yaxis = list(range = c(0, 100),
-                     title = "Percentage (%)"),
-        legend = list(title = list(text = "<b> Level of improvement </b>"))
-      )
     
   })
-  
-
   
   output$rt1 <- reactable::renderReactable({
     
@@ -778,6 +955,8 @@ server <- function(input, output, session){
     
   })
   
+  output$add_info1 <- renderPrint({trs()$t("Select an accession from the table")})
+  
   observeEvent(reactable::getReactableState("rt1"), {
     
 
@@ -813,18 +992,25 @@ server <- function(input, output, session){
             #fillOpacity = 0.8,
             #stroke = T,
             icon = ~icons,
-            popup = ~markers$popup_text,
-            clusterOptions = markerClusterOptions() 
+            popup = ~markers$popup_text 
           )
+      }else{
+        
+        leafletProxy("map2") %>% 
+          leaflet::clearMarkers() %>% 
+          clearMarkerClusters() %>% 
+          addProviderTiles(providers$CartoDB.Positron) %>% 
+          setView(lat = 0, lng = 0, zoom = 1)
+        
       }
       
       output$add_info1 <- renderPrint({
         
         to_print <- paste0("<b>ACCENUMB: </b>", vec$ACCENUMB, "<br>",
-                           '<b>ELEVATION: </b>', vec$ELEVATION, " Mts above the sea level<br>",
-                           "<b>STRM ELEVATION: </b>", vec$STRM_ELEV, " Mts above the sea level<br>",
-                           "<b>TERRAIN SLOPE(degree): </b>", vec$SLOPE_DEGREE, "º<br>",
-                           "<b>ACCESSION ISSUE: </b>", gsub(";", " - ", vec$issue_txt_desc))
+                           '<b>', trs()$t("ELEVATION"), ': </b>', vec$ELEVATION, " ", trs()$t("Mts above the sea level"), "<br>",
+                           "<b>STRM " , trs()$t('ELEVATION'), ": </b>", vec$STRM_ELEV, " ", trs()$t("Mts above the sea level"), "<br>",
+                           "<b>", trs()$t('TERRAIN SLOPE'), '(', trs()$t("degree"), "): </b>", vec$SLOPE_DEGREE, "º<br>",
+                           "<b>", trs()$t('ISSUE'), ": </b>", gsub(";", " - ", vec$issue_txt_desc))
         HTML(to_print)
         
         

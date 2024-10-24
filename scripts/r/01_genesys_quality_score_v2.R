@@ -9,7 +9,7 @@ pacman::p_load(data.table, sf, here, geodata, dplyr, stringr, stringi,writexl, a
 
 ##CHECCCCKK ACCESION ACCNUMB 135 - 
      
-here::here()
+#here::here()
 
 ##########################
 ### FUNCTIONS ###########
@@ -648,7 +648,7 @@ checking_process_v2<-function(data_pth,
   COMPLETE_data$prescription = factor(COMPLETE_data$prescription, levels = c("Easy", "Moderate", "Hard"))
   
   #writexl::write_xlsx(final_df, here(out_dir_pth, "genesys_quality_score.xlsx"))
-  write.csv(COMPLETE_data, here(out_dir_pth, "genesys_quality_score.csv"), row.names = F)
+  write.csv(COMPLETE_data, file.path(out_dir_pth, "genesys_quality_score.csv"), row.names = F)
   
   
   return(COMPLETE_data)
@@ -657,17 +657,18 @@ checking_process_v2<-function(data_pth,
 }
 
 system.time({
-  final_df <- checking_process_v2(data_pth = here("quality_score_data","genesys_downloaded_institutions_data_07-24.csv"), 
-                                  shp_pth = list.files(here("country_shps"), recursive = T, full.names = T, pattern  = ".shp$"), 
-                                  elev_pth  = here("misc","elevation_30s.tif"),
-                                  slope_pth = here("misc", "slope_30s.tif"),
+  root <- file.path(paste0(.Platform$file.sep, "home"), "jupyter", "genebank-general", "data")
+  final_df <- checking_process_v2(data_pth = file.path(root, "quality_score_data","genesys_downloaded_institutions_data_07-24.csv"), 
+                                  shp_pth = list.files(file.path(root, "country_shps"), recursive = T, full.names = T, pattern  = ".shp$"), 
+                                  elev_pth  = file.path(root, "misc","elevation_30s.tif"),
+                                  slope_pth = file.path(root, "misc", "slope_30s.tif"),
                                   #roads_root_pth = here("roads_shapefile"),
-                                  data_dict_url = here("quality_score_data", "GCA_data_dictionary.xlsx"),
+                                  data_dict_url = file.path(root, "quality_score_data", "GCA_data_dictionary.xlsx"),
                                   #roads_db_path = here("roads_dist_db", 'acc_roads_dist_db.parquet'),
-                                  centroids_db_path = here("centroids_data", "centroid_checks_df.csv"),
-                                  tree_pth = here("decision_tree", "decision_tree_v1.csv"),
-                                  out_dir_pth = here("score_results"),
-                                  bordering_cnt_pth = here("country_borders","country_borders.csv"))
+                                  centroids_db_path = file.path(root, "centroids_data", "centroid_checks_df.csv"),
+                                  tree_pth = file.path(root, "decision_tree", "decision_tree_v1.csv"),
+                                  out_dir_pth = file.path(root, "score_results"),
+                                  bordering_cnt_pth = file.path(root, "country_borders","country_borders.csv"))
   
 })
 

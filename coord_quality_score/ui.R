@@ -25,6 +25,7 @@ suppressMessages(if(!require(thematic)){install.packages("thematic");library(the
 suppressMessages(if(!require(stringi)){install.packages("stringi");library(stringi)}else{library(stringi)})
 suppressMessages(if(!require(reactable)){install.packages("reactable");library(reactable)}else{library(reactable)})
 suppressMessages(if(!require(shiny.i18n)){install.packages("shiny.i18n");library(shiny.i18n)}else{library(shiny.i18n)})
+suppressMessages(if(!require(bsplus)){install.packages("bsplus");library(bsplus)}else{library(bsplus)})
 
 
 btn_style <- HTML('.btn-light {
@@ -54,10 +55,20 @@ btn_style <- HTML('.btn-light {
 	}
 
 .radiobtn {font-size:12px;height:35px;}
+
+.sidebar-fixed {
+position: fixed;
+width: 400px !important;
+overflow: auto;
+}
+
+
 ')
 
 #shinyOptions(bslib = TRUE)
 #bs_theme_fonts("Fira Code")
+
+source("www/helpers.R")
 
 trs <- Translator$new(translation_csvs_path = "./www/")
 trs$set_translation_language("en") # here you select the default translation to display
@@ -79,13 +90,15 @@ ui <- page_navbar(
               fill = F,
               sidebar = bslib::sidebar(
                 id = "side1",
-                width = 300,
+                width = 400,
+                class = "sidebar-fixed",
                 tags$head(tags$style(btn_style)),
                 title = img(src="https://www.fao.org/images/cgrfalibraries/cgrfa-images/cgiar-initiative---genebanks-02.jpg?sfvrsn=1b1842cc_0"),
                 tags$br(),
                 uiOutput("filtros1")
               ),
-              tags$h3(tags$b(trs$t("COORDINATES QUALITY STATUS")), style = "text-align: center;")
+              tags$h3(tags$b(trs$t("COORDINATES QUALITY STATUS")), style = "text-align: center;"),
+              tags$h5(trs$t("Last update"), "23-09-2024", style = "text-align: center;")
               ,layout_columns(
                 col_widths  = c(4, 4,4)
                 ,class = "mt-3"
@@ -136,12 +149,12 @@ ui <- page_navbar(
                                ,card(
                                  full_screen = T
                                  ,card_header(
-                                   "Table"
+                                   trs$t("Table")
                                  )
                                  ,card_body(
-                                  shinyWidgets::pickerInput(
+                                   shinyWidgets::pickerInput(
                                      inputId = "filt_issue",
-                                     label = trs$t("Select issue: "), 
+                                     label = trs$t("Filter by issue"), 
                                      choices = c("Missing ORIGCTY",  
                                                  "Missing Coordinates", 
                                                  "Zero coordinate", 
@@ -161,24 +174,27 @@ ui <- page_navbar(
                                      width = "100%"
                                    )
                                    ,reactableOutput("rt1", height  = "800px"),
-                                  tags$hr(),
-                                  downloadBttn(
-                                    label = trs$t("Download"),
-                                    outputId = "down_btn",
-                                    style = "pill",
-                                    color = "primary",
-                                    size = "md"
-                                  )) 
+                                   tags$hr(),
+                                   tags$div(
+                                     tags$div(
+                                       downloadButton(
+                                         label = trs$t("Download"),
+                                         outputId = "down_btn",
+                                         class = "btn btn-outline-secondary btn-lg") 
+                                     ,style = "margin:  0; position: absolute; top: 50%; left: 50%; -ms-transform: translate(-50%, -50%); transform: translate(-50%, -50%);")
+                                     ,style = "height:100px; position: relative") %>%  
+                                     bs_embed_tooltip( title = "Download filtered table", placement = "right")
+                                 ) 
                                )
                                ,card(
                                  full_screen = T
                                  ,card_header(
                                    trs$t("Additional Info")
                                  )
-                                 ,card_body(tags$h3(trs$t("Accession status:")),
+                                 ,card_body(tags$h3(trs$t("Accession status")),
                                             htmlOutput("add_info1"),
                                             tags$hr(),
-                                            tags$h3(trs$t("Selected acc:")),
+                                            tags$h3(trs$t("Accession location")),
                                             leafletOutput("map2")
                                             ) 
                                )
@@ -188,14 +204,15 @@ ui <- page_navbar(
             )
   ),
   nav_spacer(),
-  nav_menu(title = "Language",
+  nav_menu(title = "",
            align = "right",
            icon = tags$i(class="fa-solid fa-language"),
            nav_item( 
+             tags$div(style = "width: '20px'; background-color:'red';"),
              radioGroupButtons(
                inputId = "lan",
                label = "",
-               status = "default",
+               status = "btn btn-outline-secondary btn-lg",
                choices = c("English" = "en", "Español" = "es"),
                direction = "vertical",
                justified = T,

@@ -3,7 +3,7 @@
 #' @param s3_clt (object):S3 client from paws.strograge call
 #' @param out_dir_name (character): out directory name
 #' @return NULL
-#' @example copy_s3_country_shp(s3_clt, here("country_shps"))
+#' @example copy_s3_country_shp(s3_clt,  file.path(root,"country_shps"))
 copy_s3_country_shp <- function( s3_clt, out_dir_name){
   
   nms_fls <- s3_clt$list_objects_v2(
@@ -49,8 +49,8 @@ copy_s3_country_shp <- function( s3_clt, out_dir_name){
       b_nm_ext <- basename(fl)
       b_nm <- gsub(".[a-zA-Z]{3}$", "", b_nm_ext)
       
-      out_dir <- here::here( out_dir_name , b_nm)
-      out_file <- here::here(out_dir, b_nm_ext )
+      out_dir <- file.path( out_dir_name , b_nm)
+      out_file <- file.path(out_dir, b_nm_ext )
       
       if(!dir.exists(out_dir)){dir.create(out_dir, recursive = T)}
       
@@ -78,11 +78,11 @@ copy_s3_country_shp <- function( s3_clt, out_dir_name){
 #' @param s3_clt (object):S3 client from paws.strograge call
 #' @param out_dir_name (character): out directory name
 #' @return NULL
-#' @example copy_s3_misc_files(s3_clt, here("misc"))
+#' @example copy_s3_misc_files(s3_clt,  file.path(root,"misc"))
 copy_s3_misc_files <- function( s3_clt, out_dir_name){
   
   
-  out_dir <- here::here( out_dir_name)
+  out_dir <- file.path( out_dir_name)
   
   nms_fls <- s3_clt$list_objects(
     Bucket  = "genebanks",
@@ -101,7 +101,7 @@ copy_s3_misc_files <- function( s3_clt, out_dir_name){
     cat("> Downloading data for: ", c_nm, "\n")
     b_nm_ext <- basename(c_nm)
     
-    out_file <- here::here(out_dir, b_nm_ext)
+    out_file <- file.path(out_dir, b_nm_ext)
     
     if(!file.exists(out_file)){
       s3_clt$download_file(
@@ -127,11 +127,11 @@ copy_s3_misc_files <- function( s3_clt, out_dir_name){
 #' @param s3_clt (object):S3 client from paws.strograge call
 #' @param out_dir_name (character): out directory name
 #' @return NULL
-#' @example copy_s3_centorids_db_files(s3_clt, here("centroids_data"))
+#' @example copy_s3_centorids_db_files(s3_clt,  file.path(root,"centroids_data"))
 copy_s3_centorids_db_files <- function( s3_clt, out_dir_name){
   
   
-  out_dir <- here::here( out_dir_name)
+  out_dir <- file.path( out_dir_name)
   
   nms_fls <- s3_clt$list_objects(
     Bucket  = "genebanks",
@@ -148,7 +148,7 @@ copy_s3_centorids_db_files <- function( s3_clt, out_dir_name){
     cat("> Downloading data for: ", c_nm, "\n")
     b_nm_ext <- basename(c_nm)
     
-    out_file <- here::here(out_dir, b_nm_ext)
+    out_file <- file.path(out_dir, b_nm_ext)
     
     if(!file.exists(out_file)){
       s3_clt$download_file(
@@ -174,10 +174,10 @@ copy_s3_centorids_db_files <- function( s3_clt, out_dir_name){
 #' @param s3_clt (object):S3 client from paws.strograge call
 #' @param out_dir_name (character): out directory name
 #' @return NULL
-#' @example copy_s3_decision_tree_file(s3_clt, here("decision_tree"))
+#' @example copy_s3_decision_tree_file(s3_clt,  file.path(root,"decision_tree"))
 copy_s3_decision_tree_file <- function( s3_clt, out_dir_name){
   
-  out_dir <- here::here( out_dir_name)
+  out_dir <- file.path( out_dir_name)
   
   nms_fls <- s3_clt$list_objects(
     Bucket  = "genebanks",
@@ -194,7 +194,7 @@ copy_s3_decision_tree_file <- function( s3_clt, out_dir_name){
     cat("> Downloading data for: ", c_nm, "\n")
     b_nm_ext <- basename(c_nm)
     
-    out_file <- here::here(out_dir, b_nm_ext)
+    out_file <- file.path(out_dir, b_nm_ext)
     
     if(!file.exists(out_file)){
       s3_clt$download_file(
@@ -220,10 +220,10 @@ copy_s3_decision_tree_file <- function( s3_clt, out_dir_name){
 #' @param s3_clt (object):S3 client from paws.strograge call
 #' @param out_dir_name (character): out directory name
 #' @return NULL
-#' @example copy_s3_genesys_data(s3_clt, here("quality_score_data"))
+#' @example copy_s3_genesys_data(s3_clt,  file.path(root,"quality_score_data"))
 copy_s3_genesys_data <- function( s3_clt, out_dir_name){
   
-  out_dir <- here::here( out_dir_name)
+  out_dir <- file.path( out_dir_name)
   
   nms_fls <- s3_clt$list_objects(
     Bucket  = "genebanks",
@@ -240,7 +240,7 @@ copy_s3_genesys_data <- function( s3_clt, out_dir_name){
     cat("> Downloading data for: ", c_nm, "\n")
     b_nm_ext <- basename(c_nm)
     
-    out_file <- here::here(out_dir, b_nm_ext)
+    out_file <-file.path(out_dir, b_nm_ext)
     
     if(!file.exists(out_file)){
       s3_clt$download_file(
@@ -266,11 +266,11 @@ copy_s3_genesys_data <- function( s3_clt, out_dir_name){
 #' @param s3_clt (object):S3 client from paws.strograge call
 #' @param out_dir_name (character): out directory name
 #' @return NULL
-#' @example copy_s3_bordering_countries_db_files(s3_clt, here("contry_borders"))
+#' @example copy_s3_bordering_countries_db_files(s3_clt,  file.path(root,"country_borders"))
 copy_s3_bordering_countries_db_files <- function( s3_clt, out_dir_name){
   
   
-  out_dir <- here::here( out_dir_name)
+  out_dir <- file.path( out_dir_name)
   
   nms_fls <- s3_clt$list_objects(
     Bucket  = "genebanks",
@@ -287,7 +287,7 @@ copy_s3_bordering_countries_db_files <- function( s3_clt, out_dir_name){
     cat("> Downloading data for: ", c_nm, "\n")
     b_nm_ext <- basename(c_nm)
     
-    out_file <- here::here(out_dir, b_nm_ext)
+    out_file <- file.path(out_dir, b_nm_ext)
     
     if(!file.exists(out_file)){
       s3_clt$download_file(
