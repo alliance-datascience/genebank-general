@@ -34,6 +34,8 @@ extract_inst <- function(inst){
   
   passport <- download_mcpd(inst)
   
+  #pdci <- download_pdci(inst, file = NULL)
+
   data <- read_excel(passport, sheet = 1)
   
   data <- data[which(data$SAMPSTAT %in% c(100,110, 120, 130, 200, 300, 999)), ]
