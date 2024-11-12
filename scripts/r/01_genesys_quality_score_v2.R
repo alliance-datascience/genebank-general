@@ -636,8 +636,8 @@ checking_process_v2<-function(data_pth,
   
   COMPLETE_data$quality_score = dplyr::case_when(
     COMPLETE_data$SCORE <= 4 ~ "Low",
-    COMPLETE_data$SCORE > 4 & COMPLETE_data$SCORE <= 8 ~ "Moderate",
-    COMPLETE_data$SCORE > 8 ~ "High",
+    COMPLETE_data$SCORE > 4 & COMPLETE_data$SCORE <= 9 ~ "Moderate",
+    COMPLETE_data$SCORE > 9 ~ "High",
     .default = NA)
   COMPLETE_data$quality_score = factor(COMPLETE_data$quality_score, levels = c("Low", "Moderate", "High"))
   
