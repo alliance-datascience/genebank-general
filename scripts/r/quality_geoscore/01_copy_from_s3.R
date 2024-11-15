@@ -332,7 +332,7 @@ get_input_files <- function(s3_clt,  root){
   copy_s3_misc_files(s3_clt,  file.path(root,"misc"))
   copy_s3_centorids_db_files(s3_clt,  file.path(root,"centroids_data"))
   copy_s3_decision_tree_file(s3_clt,  file.path(root,"decision_tree"))
-  copy_s3_genesys_data(s3_clt,  file.path(root,"quality_score_data"))
+  #copy_s3_genesys_data(s3_clt,  file.path(root,"quality_score_data"))
   copy_s3_bordering_countries_db_files(s3_clt,  file.path(root,"country_borders"))
   
   try({
