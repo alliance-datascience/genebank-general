@@ -27,4 +27,6 @@ sudo apt-get -y install --no-install-recommends libgdal-dev libgeos-dev libproj-
     libpng-dev \
     libtiff5-dev \
     libjpeg-dev \
-    unixodbc-dev
+    unixodbc-dev \
+    libsodium-dev\
+    libssl-dev
