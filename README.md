@@ -41,16 +41,36 @@ Script `00_download_genesys_passport_data.R` download data from [Genesys-pgr](ht
 
 data comes with the same format as specified by Genesys.
 
+## Verification fields
+
+Nine aspects were selected to assess the quality of the passport data for an accession, the more of this aspects are acomplished the higer quality will be, verification fields are described below:
+
+* **ORIGCTY**: wheter or not an accession has reported the country of origin.
+* **Missing Coordinates**: wheter an accession has coordinates.
+* **Zero Coordinates**: wheter an accession has values of 0 in either latitude or longitude.
+* **Accession in Sea or Coast line**: wheter the coordinates falls in oceans.
+* **Georeferenced to a centroid**: wheter the coordinate was georeferenced to a Biodiversity institution, city, county or country centroid.
+* **Accessions per coordinate**: wheter an accession belong to a group of more than 25 different acessions with the same coordinate.
+* **Number of decimal places**: wheter the coordinates has more than two decimal places.
+* **Missmatch ORIGCTY**: wheter an accession country of origin does not match the country where the coordinates falls.
+* **Bordering Country**: wheter an accession with **Missmatch ORIGCTY** has their reported country of origin in a bordering country.
+* **Elevation difference**: wheter the elevation reported in the passport data has a difference less than 150 meters with respect to the [STRM-elevation](https://srtm.csi.cgiar.org/) of the coordinate.
+* **Collection site description**: wheter or not an accession has the collsite description available.
+* **Admon level 1**: wheter an accession collsite description match the first administrative level GADM name where the coordinate falls.
+* **Admon level 2**: wheter an accession collsite description match the second administrative level GADM name where the coordinate falls.
+
+
 ## Input data for quality score
 
-To calculate the quality score, some data were gathered from external data sources, which are next:
+To calculate the quality score, data was collected from the following external sources:
 
 
 * **Country administrative levels 1 and 2 (GADM)**:The dataset of Global Administradive Areas, is a high-resolution database that map the administrative areas of all the countries around the world, this includes boundaries for all the levels of division for each one, at any period of time.  The version 3.6 was used and was downloaded using the `geodata` R library using the function `geodata::gadm`.
 * **STRM-elevation**: It is a topographic database of the Earth at one kilometer resolution, created by the Shuttle Radar Topography Mission, and which has digital information about land elevations at a near-global scale, from 56°S to 60°N [STRM-CGIAR](https://srtm.csi.cgiar.org/).
 * **Biodiversity institutions, City, County and Country centroids**:This dataset is a dataframe of central coordinates compiled from multiple sources.  It includes data from registered biodiversity institutions, as provided by the  `coordinateCleaner::institutions` R-library (for more details, see the library documentation). Centroids data for Cities and Counties was sourced from the **Weighted Centroid of the world largest cities** ([Github](https://gist.github.com/Fil/17fc857c3ce36bf8e21ddefab8bc9af4)). Countries were obtained from two different sources: Google maps ([link](https://developers.google.com/public-data/docs/canonical/countries_csv)) and World country centroids ([GitHub](https://github.com/gavinr/world-countries-centroids/blob/master/dist)). 
-* **Country Bordes**: Dataframe with countries ISO3 code and their respective bordering neighbour country ISO3 code.
-*  
+* **Country Borders**: Dataframe with countries ISO3 code and their respective bordering neighbour country ISO3 code (csv format).
+* **Data dictionary**: Data dictionary with description of each variable used for quality score calculation (xlsx format).
+* **Decision tree**: Dataframe with the different combinations of paths/branches for the verification fields. 
 
 
 
