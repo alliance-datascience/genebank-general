@@ -1,11 +1,26 @@
-# Check for geographical coordinates issues for Gensys institute data
+# Check for geographical coordinates issues for Genesys institute data
 # Maria Victoria Diaz, Andres Mendez
 # 2023
 # Alliance of Bioversity and CIAT
 
-suppressMessages(if(!require(pacman)){install.packages("pacman");library(pacman)}else{library(pacman)})
+library(pacman)
 pacman::p_load(tidyverse,data.table, sf, geodata, dplyr, stringr, stringi, readr,
                terra, vroom, httr, jsonlite, geosphere, readxl)
+
+### CONSTANTS
+root = Sys.getenv("WORK_DIR")
+print(paste0("Environment: ", paste0(ls(), collapse = ", ")))
+print(paste("Loading data from", root))
+elev_rst         <- terra::rast(file.path(root, "misc", "elevation_30s.tif"))
+slope_rst        <- terra::rast(file.path(root, "misc", "slope_30s.tif"))
+shp_paths        <- list.files(file.path(root, "country_shps"), recursive = T, full.names = T, pattern  = ".shp$") #terra::vect(shp_pth)
+centroid_df      <- readr::read_csv(file.path(root, "centroids_data", "centroid_checks_df.csv"), show_col_types = FALSE)
+bordering_cnt    <- readr::read_csv(file.path(root, "country_borders", "country_borders.csv"), show_col_types = FALSE)
+tree_df          <- read.csv(file.path(root, "decision_tree", "decision_tree_v1.csv"))
+text_description <- readxl::read_excel(file.path(root, "data_dictionary", "GCA_data_dictionary.xlsx"), sheet = 1)
+print(paste0("Environment: ", paste0(ls(), collapse = ", ")))
+print("Done loading data.")
+
 
 ##CHECCCCKK ACCESION ACCNUMB 135 - 
      
@@ -335,15 +350,14 @@ acc_per_coord <- function(df){
   
   df <- dplyr::left_join(df, temp_df)
   return(df$check_count_acc_per_coord)
-  }
+}
 
 
 #' Function to match accession check fields to tree
-#' @param tree (data.frame) tree of checks field for verification
 #' @param df (data.frame) genesys dataframe with verification fields 
 #' @return data.frame with the same number of rows as df containing tree paths and Quality score
 
-scoring <- function(tree, tmp_df){
+scoring <- function(tmp_df){
   
   vars_select <- c("check_ORIGCTY",
                    "check_location_available",
@@ -358,8 +372,8 @@ scoring <- function(tree, tmp_df){
                    "check_collsite",
                    "admon_lvl_1_matched",
                    "admon_lvl_2_matched" )
-  
-  tree <- tree[, !grepl("\\ROUTE\\b", names(tree))]
+
+  tree <- tree_df[, !grepl("\\ROUTE\\b", names(tree_df))]
   
   tmp_df <- tmp_df[ , vars_select]
   
@@ -403,11 +417,10 @@ scoring <- function(tree, tmp_df){
 
 
 #' Function to get issue description for tree routes/paths
-#' @param tree (data.frame) tree of verification fields
 #' @param df (data.fram) genesys dataframe with verification fields
 #' @return data.frame with issue text description for each row
 
-get_branch_desc <- function(tree, tmp_df){
+get_branch_desc <- function(tmp_df){
   
   labs_dec <- c("Missing ORIGCTY",  "Missing Coordinates", "Zero coordinate", "Coordinate in Sea or Coast line",
                 "Georeferenced to a centroid", "Belong to a set of accessions (more than 25) with the same coordinate",
@@ -416,7 +429,9 @@ get_branch_desc <- function(tree, tmp_df){
                 "Missing COLLSITE", 
                 "Missing Country admon level 1 in COLLSITE",
                 "Missing Country admon level 2 in COLLSITE")
-  
+
+  tree <- copy(tree_df)
+
   for(i in 1:(ncol(tree)-3) ){
     
     nms <- labs_dec[i]
@@ -440,51 +455,15 @@ get_branch_desc <- function(tree, tmp_df){
 
 #' Main Function to implement coordinates checking proccess for genesys data V2.0, new 
 #' way of compute priority score
-#' @param data_pth (character) path to genesys institute data
-#' @param shp_pth (character) path/paths to  shapefiles
-#' @param elev_pth (character) path to elevetion raster
-#' @param centroids_db_path (character) Centroids database full path
-#' @param out_dir_pth (character) full output dir path 
-#' @param bordering_cnt_pth (character) full path to bordering countries list
+#' @param COMPLETE_data The data to check
 #' @return List of dataframe containnig 
-checking_process_v2<-function(root,
-                              COMPLETE_data){
-  
-  shp_pth = list.files(file.path(root, "country_shps"), recursive = T, full.names = T, pattern  = ".shp$") 
-  elev_pth  = file.path(root, "misc","elevation_30s.tif")
-  slope_pth = file.path(root, "misc", "slope_30s.tif")
-  #roads_root_pth = here("roads_shapefile"),
-  data_dict_url = file.path(root, "data_dictionary", "GCA_data_dictionary.xlsx")
-  #roads_db_path = here("roads_dist_db", 'acc_roads_dist_db.parquet'),
-  centroids_db_path = file.path(root, "centroids_data", "centroid_checks_df.csv")
-  tree_pth = file.path(root, "decision_tree", "decision_tree_v1.csv")
-  out_dir_pth = file.path(root, "score_results")
-  bordering_cnt_pth = file.path(root, "country_borders","country_borders.csv")
-  
+checking_process_v2<-function(COMPLETE_data){
 
-  elev_rst       <- terra::rast(elev_pth)
-  slope_rst      <- terra::rast(slope_pth)
-  shp_paths      <- shp_pth #terra::vect(shp_pth)
-  centroid_df    <- readr::read_csv(centroids_db_path, show_col_types = FALSE)
-  bordering_cnt  <- readr::read_csv(bordering_cnt_pth, show_col_types = FALSE)
-  tree_df        <- read.csv(tree_pth)
-  tree_df        <- tree_df[, !grepl("\\bcat_score\\b", names(tree_df))]
-  #data_dic_pth <- tempfile(pattern = ".xlsx")
-  #download.file(data_dict_url, data_dic_pth)
-  #stopifnot("Download failed for Data dictionary" = file.exists(data_dic_pth))
-  data_dic_pth <- data_dict_url
-  
-  text_description <- readxl::read_excel(data_dic_pth, sheet = 1)
-  
-  
-  print("Reading institute passport data...")
-  
-  #COMPLETE_data <- data_file
-  
   print(paste0("Total rows: ",    nrow(COMPLETE_data)))
   print(paste0("Total columns: ", ncol(COMPLETE_data)))
   print(paste0("Size in RAM: ",   format(object.size(COMPLETE_data), units = "Mb")))
-  
+  print(paste0("Environment: ", paste0(ls(), collapse = ", ")))
+
   COMPLETE_data$id <- 1:nrow(COMPLETE_data)
   #names(data)[which(names(data) %in% c("DECLATITUDE", "DECLONGITUDE"))]<- c("Latitude", "Longitude")
   
@@ -673,7 +652,7 @@ checking_process_v2<-function(root,
   #########################
   
   
-  decisions <- scoring(tree = tree_df, tmp_df = COMPLETE_data)
+  decisions <- scoring(tmp_df = COMPLETE_data)
   
   COMPLETE_data <- cbind(COMPLETE_data, decisions)
   
@@ -684,14 +663,16 @@ checking_process_v2<-function(root,
     .default = NA)
   COMPLETE_data$quality_score = factor(COMPLETE_data$quality_score, levels = c("Low", "Moderate", "High"))
   
-  COMPLETE_data <- get_branch_desc(tree = tree_df, COMPLETE_data)
+  COMPLETE_data <- get_branch_desc(COMPLETE_data)
   
   #print(paste0("Process Done, saving data in: ", file.path(out_dir_pth, "quality_score_output.csv")))
   #writexl::write_xlsx(final_df, here(out_dir_pth, "genesys_quality_score.xlsx"))
   #write.csv(COMPLETE_data, file.path(out_dir_pth, "quality_score_output.csv"), row.names = F)
-  print("Process Done, returning data")
-  
-  return(COMPLETE_data)
 
+  # rm(list = c('centroids', 'decisions', 'x'))
+  # print(paste0("End environment: ", paste0(ls(), collapse = ", ")))
+
+  print("Process Done, returning data")
+  return(COMPLETE_data)
 }
 

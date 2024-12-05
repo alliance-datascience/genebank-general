@@ -53,6 +53,15 @@ RUN R -e "install.packages('plumber', repos='http://cran.rstudio.com/')"
 RUN R -e "suppressMessages(if(!require(pacman)){install.packages('pacman');library(pacman)}else{library(pacman)})"
 RUN R -e "pacman::p_load(data.table, tidyverse, sf, geodata, dplyr, stringr, stringi, readr, terra, vroom, httr, jsonlite, geosphere, readxl, plumber)"
 
+# Memory inspection
+RUN R -e "pacman::p_load(pryr)"
+
+# Install jemalloc library to prevent memory leaks in R docker
+RUN apt-get install -y --no-install-recommends libssl-dev libjemalloc-dev
+ENV LD_PRELOAD /usr/lib/x86_64-linux-gnu/libjemalloc.so
+# ENV LD_PRELOAD /usr/lib/aarch64-linux-gnu/libjemalloc.so
+
+USER nobody
 
 COPY scripts/quality_score/02_genesys_quality_score_v2.R /home/02_genesys_quality_score_v2.R
 COPY scripts/api/REST_api.R /home/REST_api.R
