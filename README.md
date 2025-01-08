@@ -21,7 +21,7 @@ Dockerfile for building docker container with software requirements for calculat
 
 Proposed workflow are ilustrated in the next diagram:
 
-![pipeline-img](https://raw.githubusercontent.com/alliance-datascience/genebank-general/blob/dev/images/quality_score_pipeline.png)
+![pipeline-img](https://raw.githubusercontent.com/alliance-datascience/genebank-general/refs/heads/dev/images/quality_score_pipeline.png)
 
 ## Genesys passport data
 
@@ -41,26 +41,8 @@ Script `00_download_genesys_passport_data.R` download data from [Genesys-pgr](ht
 
 data comes with the same format as specified by Genesys.
 
-## Verification fields
 
-Nine aspects were selected to assess the quality of the passport data for an accession, the more of this aspects are acomplished the higer quality will be, verification fields are described below:
-
-* **ORIGCTY**: wheter or not an accession has reported the country of origin.
-* **Missing Coordinates**: wheter an accession has coordinates.
-* **Zero Coordinates**: wheter an accession has values of 0 in either latitude or longitude.
-* **Accession in Sea or Coast line**: wheter the coordinates falls in oceans.
-* **Georeferenced to a centroid**: wheter the coordinate was georeferenced to a Biodiversity institution, city, county or country centroid.
-* **Accessions per coordinate**: wheter an accession belong to a group of more than 25 different acessions with the same coordinate.
-* **Number of decimal places**: wheter the coordinates has more than two decimal places.
-* **Missmatch ORIGCTY**: wheter an accession country of origin does not match the country where the coordinates falls.
-* **Bordering Country**: wheter an accession with **Missmatch ORIGCTY** has their reported country of origin in a bordering country.
-* **Elevation difference**: wheter the elevation reported in the passport data has a difference less than 150 meters with respect to the [STRM-elevation](https://srtm.csi.cgiar.org/) of the coordinate.
-* **Collection site description**: wheter or not an accession has the collsite description available.
-* **Admon level 1**: wheter an accession collsite description match the first administrative level GADM name where the coordinate falls.
-* **Admon level 2**: wheter an accession collsite description match the second administrative level GADM name where the coordinate falls.
-
-
-## Input data for quality score
+## Input data
 
 To calculate the quality score, data was collected from the following external sources:
 
@@ -72,6 +54,36 @@ To calculate the quality score, data was collected from the following external s
 * **Data dictionary**: Data dictionary with description of each variable used for quality score calculation (xlsx format).
 * **Decision tree**: Dataframe with the different combinations of paths/branches for the verification fields. 
 
+
+
+## Verification fields
+
+Nine aspects were selected to assess the quality of the passport data for an accession, the more of this aspects are accomplished the higher quality will be, verification fields are described below:
+
+* **ORIGCTY**: whether or not an accession has reported the country of origin.
+* **Missing Coordinates**: whether an accession has coordinates.
+* **Zero Coordinates**: whether an accession has values of 0 in either latitude or longitude.
+* **Accession in Sea or Coast line**: whether the coordinates falls in oceans.
+* **Georeferenced to a centroid**: whether the coordinate was georeferenced to a Biodiversity institution, city, county or country centroid.
+* **Accessions per coordinate**: whether an accession belong to a group of more than 25 different accessions with the same coordinate.
+* **Number of decimal places**: whether the coordinates has more than two decimal places.
+* **Mismatch ORIGCTY**: whether an accession country of origin does not match the country where the coordinates falls.
+* **Bordering Country**: whether an accession with **Mismatch ORIGCTY** has their reported country of origin in a bordering country.
+* **Elevation difference**: whether the elevation reported in the passport data has a difference less than 150 meters with respect to the [STRM-elevation](https://srtm.csi.cgiar.org/) of the coordinate.
+* **Collection site description**: whether or not an accession has the collsite description available.
+* **Admon level 1**: whether an accession collsite description match the first administrative level GADM name where the coordinate falls.
+* **Admon level 2**: whether an accession collsite description match the second administrative level GADM name where the coordinate falls.
+
+
+Verification fields are calculated  using the script `02_genesys_quality_score_v2.R`
+
+Based on the verification field described above we constructed the decision tree illustrated below:
+
+![Decision tree](https://raw.githubusercontent.com/alliance-datascience/genebank-general/refs/heads/dev/images/score_tree.png)
+
+## Output
+
+Final output corresponds a comma delimited text file with the same columns as genesys passport data, additionally to the nine verification fields and the corresponding score.
 
 
 
