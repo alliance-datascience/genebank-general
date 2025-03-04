@@ -4,8 +4,8 @@
 # Alliance of Bioversity and CIAT
 
 suppressMessages(if(!require(pacman)){install.packages("pacman");library(pacman)}else{library(pacman)})
-pacman::p_load(data.table, sf, here, geodata, dplyr, stringr, stringi,writexl, arrow, readr,
-               terra, vroom, httr, jsonlite, stringr, cld3, geosphere, readxl, paws, paws.storage, here)
+pacman::p_load(tidyverse,data.table, sf, geodata, dplyr, stringr, stringi, readr,
+               terra, vroom, httr, jsonlite, geosphere, readxl)
 
 ##CHECCCCKK ACCESION ACCNUMB 135 - 
      
@@ -90,7 +90,7 @@ GADM_extraction <- function(df = NULL,
     cog_coord <- terra::na.omit(cog_coord, geom = TRUE)
     
     res <- lapply(shp_lst_pth, function(pth){
-      cat("Extracting data from: ", basename(pth), "\n")
+      #cat("Extracting data from: ", basename(pth), "\n")
       shp <- terra::vect(pth)
       if(length(unique(shp$GID_0)) > 1 ){
         shp$GID_0[grepl("[0-9]+", shp$GID_0)] <- unique(shp$GID_0[!grepl("[0-9]+", shp$GID_0)])
@@ -142,11 +142,16 @@ GADM_extraction <- function(df = NULL,
   new_vars <- lapply(1:admon_level, function(i){
     nm  <- paste0("GADM_NAME_",i)
     vnm <- paste0("GADM_VARNAME_",i)
+    
+    if(!nm %in% names(to_ret)){to_ret[, paste0("GADM_NAME_",i)] <- NA}
+    if(!vnm %in% names(to_ret)){to_ret[, paste0("GADM_VARNAME_",i)] <- NA}
+    
+    
     new_var <- apply(to_ret[, c(nm, vnm)], 1, function(vec){
       cond <- ifelse(is.na(nchar(vec)), '' , vec)
       vec <- gsub(pattern ="\\|" , replacement = "\\\\b\\|\\\\b", vec)
       if(all(is.na(vec))){
-        vec <- ""
+        vec <- "999"
       }else if(!any(nchar(cond) == 0) ){
         vec <- paste0("\\b", vec, "\\b")
         vec <- paste0(vec, collapse = "|")
@@ -154,7 +159,7 @@ GADM_extraction <- function(df = NULL,
         vec <- vec[nchar(cond) != 0]
         vec <- paste0("\\b", vec, "\\b")
       }else{
-        vec <- ""
+        vec <- "999"
       }
       
       return((vec))
@@ -295,7 +300,7 @@ dist_to_centroids <- function(centroid_df, df, buffer_rad){
   occ <- terra::vect(df, c("DECLONGITUDE", "DECLATITUDE"), crs = "EPSG:4326")
   
   checks <- lapply(unique(centroid_df$TYPE), function(tp){
-    print(tp)
+    #print(tp)
     df_type <- centroid_df[centroid_df$TYPE == tp, ]
     
     cent_bf <- terra::buffer(terra::vect(df_type, c("LONGITUDE", "LATITUDE"), crs = "EPSG:4326"), width = buffer_rad)
@@ -354,6 +359,8 @@ scoring <- function(tree, tmp_df){
                    "admon_lvl_1_matched",
                    "admon_lvl_2_matched" )
   
+  tree <- tree[, !grepl("\\ROUTE\\b", names(tree))]
+  
   tmp_df <- tmp_df[ , vars_select]
   
   stopifnot("missmatch in names" = all(names(tmp_df) %in% names(tree)))
@@ -374,7 +381,7 @@ scoring <- function(tree, tmp_df){
   
   
   for(i in 1:nrow(tree)){
-    cat("Processing: ", i, "\n")
+    #cat("Processing: ", i, "\n")
     vars_names <- names(tree)[!is.na(tree[i, ] )]
     vars_names <- vars_names[-grep(paste0(drop_vars, collapse = "|"), vars_names)]
     
@@ -395,6 +402,42 @@ scoring <- function(tree, tmp_df){
 }
 
 
+#' Function to get issue description for tree routes/paths
+#' @param tree (data.frame) tree of verification fields
+#' @param df (data.fram) genesys dataframe with verification fields
+#' @return data.frame with issue text description for each row
+
+get_branch_desc <- function(tree, tmp_df){
+  
+  labs_dec <- c("Missing ORIGCTY",  "Missing Coordinates", "Zero coordinate", "Coordinate in Sea or Coast line",
+                "Georeferenced to a centroid", "Belong to a set of accessions (more than 25) with the same coordinate",
+                "Less than two Decimal places in coordinate", "Mismatch ORIGCTY and GADM COUNTRY",
+                "Coordinate near to country border", "Difference in ELEVATION and STRM (elevation) greather than 150 mts or missing", 
+                "Missing COLLSITE", 
+                "Missing Country admon level 1 in COLLSITE",
+                "Missing Country admon level 2 in COLLSITE")
+  
+  for(i in 1:(ncol(tree)-3) ){
+    
+    nms <- labs_dec[i]
+    tree[, i] <- ifelse(is.na(tree[, i]), NA, ifelse(tree[, i] == 0, nms, "-"))
+    
+  }
+  
+  tree$issue_txt_desc <- apply(tree[, 1:(ncol(tree)-3)], 1, function(rw){
+    
+    paste0(rw[!is.na(rw) & rw != "-"], collapse = "; ")
+    
+  })
+  
+  
+  tmp_df <- tmp_df %>%
+    dplyr::left_join(., tree[, c("ROUTE", "issue_txt_desc")], by = "ROUTE") 
+    
+  return(tmp_df)
+  
+}
+
 #' Main Function to implement coordinates checking proccess for genesys data V2.0, new 
 #' way of compute priority score
 #' @param data_pth (character) path to genesys institute data
@@ -404,48 +447,49 @@ scoring <- function(tree, tmp_df){
 #' @param out_dir_pth (character) full output dir path 
 #' @param bordering_cnt_pth (character) full path to bordering countries list
 #' @return List of dataframe containnig 
-checking_process_v2<-function(data_pth, 
-                              shp_pth, 
-                              elev_pth, 
-                              slope_pth, 
-                              data_dict_url,
-                              centroids_db_path,
-                              tree_pth,
-                              out_dir_pth,
-                              bordering_cnt_pth){
-  #data_pth = "C:/Users/acmendez/Downloads/genesys_downloaded_institutions_data (1).csv"
-  #shp_pth = list.files("//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/others", recursive = T, full.names = T, pattern  = ".shp$")
-  #elev_pth = "C:/Users/acmendez/Downloads/elevation_30s.tif"
-  #slope_pth = "C:/Users/acmendez/Downloads/slope_col.tif"
-  #roads_root_pth = "//alliancedfs.alliance.cgiar.org/cimmyt-aidi$/OSM_roads"
-  #cnt_code_pth = "C:/Users/acmendez/Downloads/country_roads_codes.xlsx"
-  #data_dict_url = "https://github.com/alliance-datascience/genebank-general/blob/dev/scripts/r/misc/GCA_data_dictionary.xlsx"
+checking_process_v2<-function(root,
+                              COMPLETE_data){
   
-  #e <- geodata::elevation_global(0.5, tempdir())
-  #terra::writeRaster(e, "C:/Users/acmendez/Downloads/elevation_30s.tif")
+  shp_pth = list.files(file.path(root, "country_shps"), recursive = T, full.names = T, pattern  = ".shp$") 
+  elev_pth  = file.path(root, "misc","elevation_30s.tif")
+  slope_pth = file.path(root, "misc", "slope_30s.tif")
+  #roads_root_pth = here("roads_shapefile"),
+  data_dict_url = file.path(root, "data_dictionary", "GCA_data_dictionary.xlsx")
+  #roads_db_path = here("roads_dist_db", 'acc_roads_dist_db.parquet'),
+  centroids_db_path = file.path(root, "centroids_data", "centroid_checks_df.csv")
+  tree_pth = file.path(root, "decision_tree", "decision_tree_v1.csv")
+  out_dir_pth = file.path(root, "score_results")
+  bordering_cnt_pth = file.path(root, "country_borders","country_borders.csv")
+  
+
   elev_rst       <- terra::rast(elev_pth)
   slope_rst      <- terra::rast(slope_pth)
   shp_paths      <- shp_pth #terra::vect(shp_pth)
-  centroid_df    <- readr::read_csv(centroids_db_path)
-  bordering_cnt  <- readr::read_csv(bordering_cnt_pth)
+  centroid_df    <- readr::read_csv(centroids_db_path, show_col_types = FALSE)
+  bordering_cnt  <- readr::read_csv(bordering_cnt_pth, show_col_types = FALSE)
   tree_df        <- read.csv(tree_pth)
-  tree_df        <- tree_df[, !grepl("\\bROUTE\\b|\\bcat_score\\b", names(tree_df))]
+  tree_df        <- tree_df[, !grepl("\\bcat_score\\b", names(tree_df))]
   #data_dic_pth <- tempfile(pattern = ".xlsx")
   #download.file(data_dict_url, data_dic_pth)
   #stopifnot("Download failed for Data dictionary" = file.exists(data_dic_pth))
   data_dic_pth <- data_dict_url
   
-  text_description <- readxl::read_excel(data_dic_pth)
+  text_description <- readxl::read_excel(data_dic_pth, sheet = 1)
   
   
-  cat("Reading institute passport data...", "\n")
+  print("Reading institute passport data...")
   
-  COMPLETE_data <- read.csv(data_pth)
+  #COMPLETE_data <- data_file
+  
+  print(paste0("Total rows: ",    nrow(COMPLETE_data)))
+  print(paste0("Total columns: ", ncol(COMPLETE_data)))
+  print(paste0("Size in RAM: ",   format(object.size(COMPLETE_data), units = "Mb")))
+  
   COMPLETE_data$id <- 1:nrow(COMPLETE_data)
   #names(data)[which(names(data) %in% c("DECLATITUDE", "DECLONGITUDE"))]<- c("Latitude", "Longitude")
   
   
-  cat("Identifying the accessions with location issues...", "\n")
+  print("Starting scoring process")
   
   
   #########################################
@@ -515,7 +559,6 @@ checking_process_v2<-function(data_pth,
   
   COMPLETE_data$check_elev_suggested <-NA
   COMPLETE_data$check_elev_suggested <- x[,2]
-  
   COMPLETE_data$check_elev_diff <- abs(COMPLETE_data$ELEVATION - COMPLETE_data$check_elev_suggested)
   COMPLETE_data$check_elev_cat  <- NA
   COMPLETE_data$check_elev_cat  <- ifelse(COMPLETE_data$check_elev_diff > 150, TRUE,  FALSE)
@@ -641,36 +684,14 @@ checking_process_v2<-function(data_pth,
     .default = NA)
   COMPLETE_data$quality_score = factor(COMPLETE_data$quality_score, levels = c("Low", "Moderate", "High"))
   
-  COMPLETE_data$prescription = dplyr::case_when(
-    COMPLETE_data$LI == 1 ~ "Hard",
-    COMPLETE_data$LI == 2 ~ "Moderate",
-    COMPLETE_data$LI == 3 ~ "Easy")
-  COMPLETE_data$prescription = factor(COMPLETE_data$prescription, levels = c("Easy", "Moderate", "Hard"))
+  COMPLETE_data <- get_branch_desc(tree = tree_df, COMPLETE_data)
   
+  #print(paste0("Process Done, saving data in: ", file.path(out_dir_pth, "quality_score_output.csv")))
   #writexl::write_xlsx(final_df, here(out_dir_pth, "genesys_quality_score.xlsx"))
-  write.csv(COMPLETE_data, file.path(out_dir_pth, "genesys_quality_score.csv"), row.names = F)
-  
+  #write.csv(COMPLETE_data, file.path(out_dir_pth, "quality_score_output.csv"), row.names = F)
+  print("Process Done, returning data")
   
   return(COMPLETE_data)
-  
-  
+
 }
 
-system.time({
-  root <- file.path(paste0(.Platform$file.sep, "home"), "jupyter", "genebank-general", "data")
-  final_df <- checking_process_v2(data_pth = file.path(root, "quality_score_data","genesys_downloaded_institutions_data_07-24.csv"), 
-                                  shp_pth = list.files(file.path(root, "country_shps"), recursive = T, full.names = T, pattern  = ".shp$"), 
-                                  elev_pth  = file.path(root, "misc","elevation_30s.tif"),
-                                  slope_pth = file.path(root, "misc", "slope_30s.tif"),
-                                  #roads_root_pth = here("roads_shapefile"),
-                                  data_dict_url = file.path(root, "quality_score_data", "GCA_data_dictionary.xlsx"),
-                                  #roads_db_path = here("roads_dist_db", 'acc_roads_dist_db.parquet'),
-                                  centroids_db_path = file.path(root, "centroids_data", "centroid_checks_df.csv"),
-                                  tree_pth = file.path(root, "decision_tree", "decision_tree_v1.csv"),
-                                  out_dir_pth = file.path(root, "score_results"),
-                                  bordering_cnt_pth = file.path(root, "country_borders","country_borders.csv"))
-  
-})
-
-
-View(final_df)
