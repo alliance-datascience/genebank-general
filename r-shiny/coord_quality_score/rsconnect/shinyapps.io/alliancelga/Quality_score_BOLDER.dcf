@@ -1,0 +1,13 @@
+name: Quality_score_BOLDER
+title: Quality_score_BOLDER
+username: alliancelga
+account: alliancelga
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16190072
+bundleId: 11245831
+url: https://alliancelga.shinyapps.io/Quality_score_BOLDER/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: www/app.R|www/db_for_app.R
